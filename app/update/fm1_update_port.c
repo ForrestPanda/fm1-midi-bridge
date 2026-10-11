@@ -66,6 +66,8 @@ uint32_t upd_port_now_ms(void) { return timer_get_ms(); }
 
 void upd_port_idle(void)
 {
+    extern void health_bridge_alive(void);
+    health_bridge_alive();
     if (!bridge_pump_usb()) os_time_dly(1);
 }
 

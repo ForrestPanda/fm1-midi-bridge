@@ -47,6 +47,7 @@ for the FM-1 pin map and the update protocol. No Felucca code is copied.
 | `docs/update-protocol.md` | how firmware gets onto the FM-1 over USB-MIDI SysEx, and what our app must keep |
 | `docs/ble-midi.md` | the BLE MIDI 1.0 service, packet format and timing |
 | `docs/plan.md` | milestones, open questions, things to verify once an FM-1 is here |
+| `docs/manual.md` | the user manual: what the device does, every page, updating, limits |
 | `docs/sdk-notes.md` | what the AC79 SDK provides and how we use it (build, update, BLE, USB, UART) |
 | `app/` | the SDK application: `Makefile`, `app_main.c`, `board/`, `bt_ble/`, `include/` (derived from the SDK's `demo_ble`, Apache-2.0) |
 | `app/midi/` | transport-independent MIDI code: byte-stream parser, BLE MIDI packet codec, USB-MIDI event codec, routing matrix (MIT) |
@@ -61,6 +62,7 @@ for the FM-1 pin map and the update protocol. No Felucca code is copied.
 | `app/input/` | front-panel matrix scanner (14 buttons, 7 encoders, 27 keys, LEDs) on TIMER3 (MIT) |
 | `app/settings.c` | persistent settings in the SDK's syscfg (MIT) |
 | `app/bt_ble/ble_host.c`, `ble_port.c`, `adv_parse.c` | BLE host mode (scan, connect to a BLE MIDI device), the bridge's BLE port layer |
+| `web/editor.html` | settings editor in the browser over USB-MIDI SysEx (Web MIDI); see `docs/web-editor.md` |
 | `docs/ui-examples/` | example screenshots of every page (`tools/ui_mock.py`) |
 | `app/update/` | update step 1 over USB-MIDI SysEx (portable core + SDK port), soft key to recovery (MIT) |
 | `tests/` | host tests: MIDI codecs, router filters, panic, update session, settings, matrix decoder, advertising parser (`sh tests/run_tests.sh`) |
@@ -75,6 +77,26 @@ power saving. Example screenshots, rendered from the real font and layout rules 
 `tools/ui_mock.py`:
 
 ![All pages](docs/ui-examples/all-pages.png)
+
+## Footprint (build of 2026-10-11)
+
+| | size | of | note |
+| --- | --- | --- | --- |
+| `app.bin` (flash) | 351,776 B (343.5 KB) | 581,564 B app slot | 60% used; `.text` 335,456 B + RAM initialisers |
+| static RAM, initialised (`.ram0_data`) | 16,288 B | | includes the matrix ISR code copied to RAM |
+| static RAM, zeroed (`.ram0_bss`) | 70,112 B | | ours plus the SDK's |
+| static RAM total | 86,432 B (84 KB) | 512 KB internal RAM | the rest is SDK heap, Bluetooth and task stacks |
+
+Largest things of ours in RAM: the recorder (2048 events, 16 KB), the two note
+collision guards (4 KB), the panel text strip (6.7 KB), the BLE host and peripheral
+ATT buffers (about 1.5 KB each), the update staging buffers (3 KB), the log rings
+(1.5 KB) and the message queues between tasks (2 KB). The bridge and UI tasks each
+get a 1024-word stack. For comparison, the SDK's bare BLE demo is 283 KB of flash
+and 25 KB of static RAM, so the whole bridge, UI and learner feature set costs about
+60 KB of flash and 60 KB of RAM on top of the stack.
+
+Reproduce: `objdump -section-headers build/fm1bridge.elf` with the JieLi toolchain,
+and `ls -l build/app.bin`.
 
 ## Dependencies
 

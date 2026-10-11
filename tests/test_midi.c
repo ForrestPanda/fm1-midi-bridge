@@ -325,6 +325,189 @@ static void test_filters_and_panic(void)
         if (i == (int)MIDI_PANIC_COUNT - 1) CHECK(m.b[0] == 0x8F && m.b[1] == 127);
     }
     CHECK(n == (int)MIDI_PANIC_COUNT && !midi_panic_active(&p));
+    midi_panic_start_short(&p);
+    for (n = 0; midi_panic_next(&p, &m); n++) CHECK((m.b[0] & 0xF0) == 0xB0);
+    CHECK(n == (int)MIDI_PANIC_SHORT_COUNT);
+}
+
+#include "../app/midi/keys.h"
+static void test_keys(void)
+{
+    keys_state k; midi_msg m, offs[KEYS_COUNT]; int n;
+    keys_init(&k, 2, 0, 100);
+    CHECK(keys_note_number(&k, 0) == 53 && keys_note_number(&k, 26) == 79);      /* F3..G5 */
+    CHECK(keys_key_event(&k, 0, 1, &m) == 1 && m.b[0] == 0x92 && m.b[1] == 53 && m.b[2] == 100);
+    CHECK(keys_key_event(&k, 0, 1, &m) == 0);                                      /* no retrigger */
+    k.octave = 1;                                                                  /* octave changed while held */
+    CHECK(keys_key_event(&k, 0, 0, &m) == 1 && m.b[0] == 0x82 && m.b[1] == 53 && m.b[2] == 0);   /* releases the sounding note */
+    CHECK(keys_key_event(&k, 26, 1, &m) == 1 && m.b[1] == 91);
+    CHECK(keys_key_event(&k, 5, 1, &m) == 1);
+    n = keys_release_all(&k, offs, KEYS_COUNT);
+    CHECK(n == 2 && offs[0].b[0] == 0x82 && offs[0].b[1] == 70 && offs[1].b[1] == 91);
+    CHECK(keys_release_all(&k, offs, KEYS_COUNT) == 0);
+    k.octave = -3; CHECK(keys_note_number(&k, 0) == 17);
+    k.octave = 3;  CHECK(keys_note_number(&k, 26) == 115);
+    CHECK(keys_knob_event(&k, 0, 1, &m) == 1 && m.b[0] == 0xB2 && m.b[1] == 1 && m.b[2] == 1);
+    CHECK(keys_knob_event(&k, 0, -5, &m) == 1 && m.b[2] == 0);
+    CHECK(keys_knob_event(&k, 0, -1, &m) == 0);                                   /* clamped: no message */
+    CHECK(keys_knob_event(&k, 3, 0, &m) == 0);
+    CHECK(keys_knob_event(&k, 3, 100, &m) == 1 && m.b[1] == 7 && m.b[2] == 127);
+    { btn_map b = { BTN_MAP_NOTE, 36 };
+      CHECK(keys_button_event(&k, &b, 1, &m) && m.b[0] == 0x92 && m.b[1] == 36 && m.b[2] == 100);
+      CHECK(keys_button_event(&k, &b, 0, &m) && m.b[0] == 0x82 && m.b[2] == 0);
+      b.type = BTN_MAP_CC; b.number = 64;
+      CHECK(keys_button_event(&k, &b, 1, &m) && m.b[0] == 0xB2 && m.b[1] == 64 && m.b[2] == 127);
+      b.type = BTN_MAP_PROGRAM; b.number = 9;
+      CHECK(keys_button_event(&k, &b, 1, &m) && m.len == 2 && m.b[0] == 0xC2 && m.b[1] == 9);
+      CHECK(keys_button_event(&k, &b, 0, &m) == 0);
+      b.type = BTN_MAP_NONE; CHECK(keys_button_event(&k, &b, 1, &m) == 0);
+      CHECK(keys_program_step(&k, 1, &m) && m.b[0] == 0xC2 && m.b[1] == 1);
+      CHECK(keys_program_step(&k, -5, &m) && m.b[1] == 0);
+      CHECK(keys_program_step(&k, -1, &m) == 0);
+      { midi_msg bm[2]; CHECK(keys_bank_step(&k, 3, bm, 2) == 2 && bm[0].b[0] == 0xB2 && bm[0].b[1] == 0 && bm[0].b[2] == 3 && bm[1].b[0] == 0xC2); } }
+    /* router: KBD is a valid source to USB and BLE, never a destination */
+    { midi_router r; int i; router_init(&r, ROUTE_DEFAULT);
+      for (i = 0; i < MIDI_PORT_COUNT; i++) { rc[i] = 0; router_set_sink(&r, i, count_sink, &rc[i]); }
+      router_feed(&r, MIDI_PORT_KBD, &m);
+      CHECK(rc[MIDI_PORT_USB] == 1 && rc[MIDI_PORT_BLE] == 1 && rc[MIDI_PORT_TRS] == 0 && rc[MIDI_PORT_KBD] == 0);
+      CHECK(router_set(&r, MIDI_PORT_USB, MIDI_PORT_KBD, 1) == r.routes && !router_enabled(&r, MIDI_PORT_USB, MIDI_PORT_KBD)); }
+}
+
+static void test_route_options(void)
+{
+    midi_router r; midi_msg m; int i;
+    sink su = {0}, sb = {0};
+    router_init(&r, ROUTE_DEFAULT);
+    router_set_sink(&r, MIDI_PORT_USB, sink_cb, &su);
+    router_set_sink(&r, MIDI_PORT_BLE, sink_cb, &sb);
+    /* clock only to USB */
+    router_opt(&r, MIDI_PORT_TRS, MIDI_PORT_BLE)->flags &= (uint8_t)~ROUTE_OPT_CLOCK;
+    m.kind = MIDI_KIND_REALTIME; m.flags = 0; m.len = 1; m.b[0] = 0xF8; router_feed(&r, MIDI_PORT_TRS, &m);
+    m.b[0] = 0xFA; router_feed(&r, MIDI_PORT_TRS, &m);
+    m.b[0] = 0xFE; router_feed(&r, MIDI_PORT_TRS, &m);                        /* active sensing is not clock: passes */
+    CHECK(su.count == 3 && sb.count == 1);
+    /* sysex only to USB */
+    router_opt(&r, MIDI_PORT_TRS, MIDI_PORT_BLE)->flags &= (uint8_t)~ROUTE_OPT_SYSEX;
+    m.kind = MIDI_KIND_SYSEX; m.flags = MIDI_SYSEX_START | MIDI_SYSEX_END; m.len = 2; m.b[0] = 0xF0; m.b[1] = 0xF7;
+    router_feed(&r, MIDI_PORT_TRS, &m);
+    CHECK(su.count == 4 && sb.count == 1);
+    /* channel filter and remap */
+    router_opt(&r, MIDI_PORT_TRS, MIDI_PORT_USB)->channels = 1u << 2;          /* channel 3 only */
+    router_opt(&r, MIDI_PORT_TRS, MIDI_PORT_BLE)->remap = 10;                  /* everything to channel 10 */
+    memset(&su, 0, sizeof su); memset(&sb, 0, sizeof sb);
+    m.kind = MIDI_KIND_CHANNEL; m.flags = 0; m.len = 3; m.b[0] = 0x92; m.b[1] = 60; m.b[2] = 100; router_feed(&r, MIDI_PORT_TRS, &m);
+    m.b[0] = 0x90; router_feed(&r, MIDI_PORT_TRS, &m);
+    CHECK(su.count == 1 && su.bytes[0] == 0x92);
+    CHECK(sb.count == 2 && sb.bytes[0] == 0x99 && sb.bytes[3] == 0x99 && sb.bytes[1] == 60);
+    /* input transform: transpose and soft velocity on TRS, note off velocity untouched, out of range dropped */
+    r.in[MIDI_PORT_TRS].transpose = 12; r.in[MIDI_PORT_TRS].vel_curve = VEL_SOFT;
+    memset(&su, 0, sizeof su); router_opt(&r, MIDI_PORT_TRS, MIDI_PORT_USB)->channels = 0xFFFF;
+    m.b[0] = 0x90; m.b[1] = 60; m.b[2] = 100; router_feed(&r, MIDI_PORT_TRS, &m);
+    CHECK(su.count == 1 && su.bytes[1] == 72 && su.bytes[2] == 100 * 100 / 127);
+    m.b[0] = 0x80; m.b[2] = 64; router_feed(&r, MIDI_PORT_TRS, &m);
+    CHECK(su.count == 2 && su.bytes[4] == 72 && su.bytes[5] == 64);
+    m.b[0] = 0x90; m.b[1] = 120; router_feed(&r, MIDI_PORT_TRS, &m);
+    CHECK(su.count == 2 && r.count_dropped == 1);
+    m.b[0] = 0xB0; m.b[1] = 120; m.b[2] = 0; router_feed(&r, MIDI_PORT_TRS, &m);   /* CC untouched by transpose */
+    CHECK(su.count == 3 && su.bytes[7] == 120);
+    for (i = 0; i < 128; i++) { uint8_t v = midi_apply_velocity((uint8_t)i, VEL_HARD, 0); CHECK(i == 0 ? v == 0 : (v >= 1 && v <= 127 && v >= i)); }
+    CHECK(midi_apply_velocity(50, VEL_FIXED, 90) == 90 && midi_apply_velocity(0, VEL_FIXED, 90) == 0);
+}
+
+#include "../app/midi/decode.h"
+static void test_decode(void)
+{
+    char b[40]; midi_msg m;
+    m.kind = MIDI_KIND_CHANNEL; m.flags = 0; m.len = 3; m.b[0] = 0x90; m.b[1] = 60; m.b[2] = 100;
+    midi_decode(&m, b, sizeof b); CHECK(strcmp(b, "1 NoteOn C4 100") == 0);
+    m.b[2] = 0; midi_decode(&m, b, sizeof b); CHECK(strcmp(b, "1 NoteOff C4 0") == 0);
+    m.b[0] = 0xB9; m.b[1] = 7; m.b[2] = 127; midi_decode(&m, b, sizeof b); CHECK(strcmp(b, "10 CC7 volume 127") == 0);
+    m.b[1] = 33; midi_decode(&m, b, sizeof b); CHECK(strcmp(b, "10 CC33 127") == 0);
+    m.b[0] = 0xC0; m.b[1] = 4; m.len = 2; midi_decode(&m, b, sizeof b); CHECK(strcmp(b, "1 Program 5") == 0);
+    m.b[0] = 0xE0; m.b[1] = 0; m.b[2] = 0x40; m.len = 3; midi_decode(&m, b, sizeof b); CHECK(strcmp(b, "1 Bend +0") == 0);
+    m.b[0] = 0x81; m.b[1] = 0; m.b[2] = 64; midi_decode(&m, b, sizeof b); CHECK(strcmp(b, "2 NoteOff C-1 64") == 0);
+    m.kind = MIDI_KIND_REALTIME; m.len = 1; m.b[0] = 0xF8; midi_decode(&m, b, sizeof b); CHECK(strcmp(b, "Clock") == 0);
+    m.b[0] = 0xFA; midi_decode(&m, b, sizeof b); CHECK(strcmp(b, "Start") == 0);
+    m.kind = MIDI_KIND_COMMON; m.len = 3; m.b[0] = 0xF2; m.b[1] = 0x10; m.b[2] = 0x01; midi_decode(&m, b, sizeof b); CHECK(strcmp(b, "SongPos 144") == 0);
+    m.kind = MIDI_KIND_SYSEX; m.flags = MIDI_SYSEX_START | MIDI_SYSEX_END; m.len = 6;
+    m.b[0] = 0xF0; m.b[1] = 0x7E; m.b[2] = 0x7F; m.b[3] = 0x06; m.b[4] = 0x01; m.b[5] = 0xF7;
+    midi_decode(&m, b, sizeof b); CHECK(strcmp(b, "SysEx inquiry") == 0);
+    m.b[1] = 0x41; midi_decode(&m, b, sizeof b); CHECK(strcmp(b, "SysEx 6B") == 0);
+    m.flags = 0; midi_decode(&m, b, sizeof b); CHECK(strcmp(b, "SysEx ..6B") == 0);
+    CHECK(midi_decode(&m, b, 4) > 3 && strlen(b) == 3);
+}
+
+#include "../app/midi/compose.h"
+static void test_compose(void)
+{
+    compose_spec c = { COMPOSE_NOTE, 2, 60, 0, COMPOSE_TO_USB }; midi_msg m;
+    CHECK(compose_build(&c, &m) && m.b[0] == 0x92 && m.b[1] == 60 && m.b[2] == 100);          /* default velocity */
+    CHECK(compose_note_off(&c, &m) && m.b[0] == 0x82 && m.b[2] == 0);
+    c.kind = COMPOSE_CC; c.d1 = 64; c.d2 = 127; CHECK(compose_build(&c, &m) && m.b[0] == 0xB2 && m.b[1] == 64 && m.b[2] == 127);
+    c.kind = COMPOSE_PROGRAM; c.d1 = 9; CHECK(compose_build(&c, &m) && m.len == 2 && m.b[0] == 0xC2 && m.b[1] == 9);
+    c.kind = COMPOSE_BEND; c.d1 = 0; c.d2 = 0x40; CHECK(compose_build(&c, &m) && m.b[0] == 0xE2 && m.b[2] == 0x40);
+    c.kind = COMPOSE_START; CHECK(compose_build(&c, &m) && m.kind == MIDI_KIND_REALTIME && m.b[0] == 0xFA);
+    c.kind = COMPOSE_INQUIRY; CHECK(compose_build(&c, &m) && m.kind == MIDI_KIND_SYSEX && m.len == 6 && m.b[4] == 0x01);
+    c.kind = COMPOSE_RAW; c.d1 = 0xB0; c.d2 = 7; c.channel = 100; CHECK(compose_build(&c, &m) && m.len == 3 && m.b[0] == 0xB0 && m.b[1] == 7 && m.b[2] == 100);
+    c.d1 = 0xC5; CHECK(compose_build(&c, &m) && m.len == 2 && m.b[0] == 0xC5);
+    c.d1 = 0xF8; CHECK(compose_build(&c, &m) && m.kind == MIDI_KIND_REALTIME);
+    c.d1 = 0x40; CHECK(compose_build(&c, &m) == 0);
+    CHECK(compose_note_off(&c, &m) == 0);
+    CHECK(compose_uses_channel(COMPOSE_CC) && !compose_uses_channel(COMPOSE_CLOCK) && !compose_uses_d2(COMPOSE_PROGRAM));
+}
+
+#include "../app/midi/stats.h"
+#include "../app/midi/recorder.h"
+static void test_stats_recorder_inquiry(void)
+{
+    midi_stats st; midi_msg m; midi_recorder *r; int i, n; char b[48];
+    stats_reset(&st);
+    m.kind = MIDI_KIND_CHANNEL; m.flags = 0; m.len = 3; m.b[0] = 0x90; m.b[1] = 60; m.b[2] = 100; stats_add(&st, &m, 0);
+    m.b[1] = 72; m.b[2] = 50; stats_add(&st, &m, 1);
+    m.b[0] = 0x80; stats_add(&st, &m, 2);
+    m.b[0] = 0xB3; stats_add(&st, &m, 3);
+    CHECK(st.kind[ST_NOTE] == 2 && st.kind[ST_CC] == 1 && st.channel[0] == 3 && st.channel[3] == 1);
+    CHECK(st.note_min == 60 && st.note_max == 72 && st.vel_min == 50 && st.vel_max == 100);
+    m.kind = MIDI_KIND_REALTIME; m.len = 1; m.b[0] = 0xF8;
+    for (i = 0; i < 97; i++) stats_add(&st, &m, 1000 + (uint32_t)i * 20);    /* 20 ms per clock = 125 bpm */
+    CHECK(st.kind[ST_CLOCK] == 97 && st.bpm_x10 >= 1245 && st.bpm_x10 <= 1255);
+    r = malloc(sizeof *r); rec_init(r);
+    rec_start(r, 100);
+    m.kind = MIDI_KIND_CHANNEL; m.len = 3; m.b[0] = 0x90; m.b[1] = 60; m.b[2] = 90; rec_add(r, &m, 100);
+    m.b[0] = 0x80; rec_add(r, &m, 600);
+    m.kind = MIDI_KIND_SYSEX; m.flags = 3; m.len = 2; rec_add(r, &m, 700);
+    rec_stop(r, 1100);
+    CHECK(r->count == 2 && rec_duration(r) == 1000);
+    rec_play(r, 1000, 0);
+    CHECK(rec_next(r, 1000, &m) == 1 && m.b[0] == 0x90 && rec_next(r, 1000, &m) == 0);
+    CHECK(rec_next(r, 1499, &m) == 0 && rec_next(r, 1500, &m) == 1 && m.b[0] == 0x80);
+    CHECK(rec_next(r, 1600, &m) == 0 && !r->playing);
+    rec_play(r, 2000, 1);
+    for (n = 0, i = 0; i < 1200; i++) if (rec_next(r, 2000 + (uint32_t)i, &m)) n++;   /* 2000, 2500, 3000 */
+    CHECK(n == 3 && r->playing);
+    rec_play_stop(r); free(r);
+    { midi_msg q; const uint8_t rep[] = {0xF0,0x7E,0x10,0x06,0x02,0x41,0x00,0x02,0x00,0x00,0x01,0x02,0x03,0x04,0xF7};
+      q.kind = MIDI_KIND_SYSEX; q.flags = MIDI_SYSEX_START | MIDI_SYSEX_END; q.len = sizeof rep; memcpy(q.b, rep, sizeof rep);
+      midi_decode(&q, b, sizeof b); CHECK(strcmp(b, "Inquiry: Roland fam 0200 v1.2.3.4") == 0);
+      { const uint8_t rep3[] = {0xF0,0x7E,0x10,0x06,0x02,0x00,0x20,0x29,0x01,0x00,0x07,0x00,0x00,0x01,0x00,0x00,0xF7};
+        q.len = sizeof rep3; memcpy(q.b, rep3, sizeof rep3); midi_decode(&q, b, sizeof b); CHECK(strncmp(b, "Inquiry: Novation fam 0001", 26) == 0); } }
+}
+
+#include "../app/midi/merge.h"
+static void test_merge(void)
+{
+    midi_merge g; midi_msg m, o[2]; int n;
+    merge_init(&g);
+    m.kind = MIDI_KIND_CHANNEL; m.flags = 0; m.len = 3; m.b[0] = 0x90; m.b[1] = 60; m.b[2] = 100;
+    n = merge_filter(&g, &m, o); CHECK(n == 1 && o[0].b[0] == 0x90);                    /* first on */
+    n = merge_filter(&g, &m, o); CHECK(n == 2 && o[0].b[0] == 0x80 && o[0].b[2] == 0 && o[1].b[0] == 0x90);   /* second source: retrigger */
+    m.b[0] = 0x80; m.b[2] = 0;
+    n = merge_filter(&g, &m, o); CHECK(n == 0);                                           /* still held by the other source */
+    n = merge_filter(&g, &m, o); CHECK(n == 1 && o[0].b[0] == 0x80);                     /* last holder released */
+    n = merge_filter(&g, &m, o); CHECK(n == 1);                                           /* a stray note off still passes */
+    m.b[0] = 0x90; m.b[2] = 90; merge_filter(&g, &m, o);
+    m.b[0] = 0xB0; m.b[1] = 123; m.b[2] = 0; n = merge_filter(&g, &m, o); CHECK(n == 1 && g.held[0][60] == 0);   /* all notes off clears */
+    m.kind = MIDI_KIND_REALTIME; m.len = 1; m.b[0] = 0xF8; n = merge_filter(&g, &m, o); CHECK(n == 1 && o[0].b[0] == 0xF8);
 }
 
 int main(void)
@@ -337,6 +520,12 @@ int main(void)
     test_router();
     test_usb_sysex_long();
     test_filters_and_panic();
+    test_keys();
+    test_route_options();
+    test_decode();
+    test_compose();
+    test_stats_recorder_inquiry();
+    test_merge();
     if (fails) { printf("%d failure(s)\n", fails); return 1; }
     printf("all tests passed\n");
     return 0;

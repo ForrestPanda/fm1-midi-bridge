@@ -9,8 +9,11 @@
 
 #define MIDI_PANIC_COUNT (32u + 16u * 128u)
 
-typedef struct { uint16_t i; } midi_panic;
+#define MIDI_PANIC_SHORT_COUNT 32u    /* the CC 120 / CC 123 part only */
 
-void midi_panic_start(midi_panic *p);
+typedef struct { uint16_t i; uint16_t end; } midi_panic;
+
+void midi_panic_start(midi_panic *p);          /* everything: 2080 messages */
+void midi_panic_start_short(midi_panic *p);    /* all sound off + all notes off on 16 channels: 32 messages */
 int  midi_panic_next(midi_panic *p, midi_msg *out);   /* 1 = out filled, 0 = done */
 int  midi_panic_active(const midi_panic *p);

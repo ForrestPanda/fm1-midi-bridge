@@ -21,7 +21,12 @@
 #include "usb/usb_midi.h"
 #include "bt_ble/ble_port.h"
 #include "update/fm1_update.h"
+#include "editor.h"
 #include "ui/midilog.h"
+#include "midi/stats.h"
+#include "midi/recorder.h"
+#include "midi/merge.h"
+#include "health.h"
 #include "settings.h"
 #include "midi/panic.h"
 
@@ -43,22 +48,39 @@ static blemidi_enc ble_enc;
 
 static void *uart_dev;
 static u8 uart_ring[UART_RING] __attribute__((aligned(4)));
-static cbuffer_t usb_cbuf, ble_cbuf;
+static cbuffer_t usb_cbuf, ble_cbuf, inj_cbuf;
 static u8 usb_ring[USB_RING], ble_ring[BLE_RING];
+static u8 inj_ring[32 * (1 + sizeof(midi_msg))];
 static u8 ble_pending;                  /* something was added to ble_enc since the last flush */
 static midi_panic panic;                /* midi_panic_active() while a panic is being sent */
 static volatile u8 panic_req;
+static midi_merge merge_usb, merge_ble;
+static u8 clock_running;
+static u32 clock_acc;                   /* ms x 1000 accumulator for the clock master */
+static u32 clock_last_ms;
+static midi_stats stats;
+static midi_recorder recorder;          /* 16 KB: lives here, owned by the bridge task */
+static u8 rec_ports = 3;                /* playback destinations: bit 0 USB, bit 1 BLE */
+static midi_panic link_panic;           /* short panic to the ports that are still up after a link dropped */
+static u8 link_panic_to_usb, link_panic_to_ble;
 
 /* ------------------------------------------------------------------ sinks */
 
-static void sink_usb(void *ctx, const midi_msg *m)
+static void usb_emit(const midi_msg *m)
 {
     u8 out[(MIDI_SYSEX_CHUNK / 3 + 1) * 4];
     u16 n = usbmidi_encode(0, m, out);
+    if (n && usb_midi_configured(0)) usb_midi_write(0, out, n);
+}
+
+static void sink_usb(void *ctx, const midi_msg *m)
+{
+    midi_msg o[2];
+    int i, n;
     (void)ctx;
-    if (n && usb_midi_configured(0)) {
-        usb_midi_write(0, out, n);
-    }
+    if (!settings_get()->merge_guard) { usb_emit(m); return; }
+    n = merge_filter(&merge_usb, m, o);
+    for (i = 0; i < n; i++) usb_emit(&o[i]);
 }
 
 static void ble_flush(void)
@@ -83,10 +105,20 @@ static void ble_add(uint32_t ts, const midi_msg *m)
     /* r == -1: a SysEx piece larger than a whole packet; sink_ble splits so this cannot happen */
 }
 
+static void ble_emit(const midi_msg *m);
 static void sink_ble(void *ctx, const midi_msg *m)
 {
-    uint32_t ts = timer_get_ms();
+    midi_msg o[2];
+    int i, n;
     (void)ctx;
+    if (!settings_get()->merge_guard) { ble_emit(m); return; }
+    n = merge_filter(&merge_ble, m, o);
+    for (i = 0; i < n; i++) ble_emit(&o[i]);
+}
+
+static void ble_emit(const midi_msg *m)
+{
+    uint32_t ts = timer_get_ms();
     if (!ble_port_ready()) return;
     blemidi_enc_set_max(&ble_enc, ble_port_max_packet());
     if (m->kind != MIDI_KIND_SYSEX) {
@@ -114,12 +146,71 @@ static void sink_ble(void *ctx, const midi_msg *m)
 void bridge_panic_request(void) { panic_req = 1; }
 int  bridge_panic_active(void) { return panic_req || midi_panic_active(&panic); }
 
+/* a link dropped (USB unplugged, BLE disconnected): the other outputs get all notes
+ * off, so nothing a vanished input was holding keeps sounding */
+static void link_watch(void)
+{
+    static u8 was_usb, was_ble;
+    u8 usb = (u8)usb_midi_configured(0), ble = (u8)ble_port_ready();
+    if (settings_get()->panic_on_disconnect) {
+        if (was_usb && !usb) { midi_panic_start_short(&link_panic); link_panic_to_ble = ble; link_panic_to_usb = 0; }
+        if (was_ble && !ble) { midi_panic_start_short(&link_panic); link_panic_to_usb = usb; link_panic_to_ble = 0; }
+    }
+    was_usb = usb; was_ble = ble;
+}
+
+static int link_panic_step(void)
+{
+    midi_msg m;
+    int n = 0;
+    while (n < 32 && midi_panic_next(&link_panic, &m)) {
+        if (link_panic_to_usb) sink_usb(NULL, &m);
+        if (link_panic_to_ble) sink_ble(NULL, &m);
+        n++;
+    }
+    return n > 0;
+}
+
+/* clock master: F8 at 24 per quarter from a ms accumulator; jitter is the loop period */
+void bridge_clock_run(int on)
+{
+    midi_msg m;
+    m.kind = MIDI_KIND_REALTIME; m.flags = 0; m.len = 1;
+    if (on && !clock_running) { clock_acc = 0; clock_last_ms = timer_get_ms(); m.b[0] = 0xFA; }
+    else if (!on && clock_running) m.b[0] = 0xFC;
+    else return;
+    clock_running = (u8)on;
+    if (settings_get()->clock_to & 1) sink_usb(NULL, &m);
+    if (settings_get()->clock_to & 2) sink_ble(NULL, &m);
+}
+int bridge_clock_running(void) { return clock_running; }
+
+static int clock_step(void)
+{
+    u32 now, period_us1000, n = 0;
+    midi_msg m;
+    if (!clock_running) return 0;
+    now = timer_get_ms();
+    clock_acc += (now - clock_last_ms) * 1000u;          /* in us */
+    clock_last_ms = now;
+    period_us1000 = 60000000u / (24u * (settings_get()->clock_bpm ? settings_get()->clock_bpm : 120));   /* us per clock */
+    m.kind = MIDI_KIND_REALTIME; m.flags = 0; m.len = 1; m.b[0] = 0xF8;
+    while (clock_acc >= period_us1000 && n < 8) {
+        clock_acc -= period_us1000;
+        if (settings_get()->clock_to & 1) sink_usb(NULL, &m);
+        if (settings_get()->clock_to & 2) sink_ble(NULL, &m);
+        n++;
+    }
+    if (clock_acc > 8 * period_us1000) clock_acc = 0;   /* fell far behind: do not burst */
+    return n > 0;
+}
+
 /* a few panic messages per loop, straight to the output ports (no routes, no filters) */
 static int panic_step(void)
 {
     midi_msg m;
     int n = 0;
-    if (panic_req) { panic_req = 0; midi_panic_start(&panic); }
+    if (panic_req) { panic_req = 0; midi_panic_start(&panic); merge_all_off(&merge_usb); merge_all_off(&merge_ble); }
     while (n < 64 && midi_panic_next(&panic, &m)) {
         sink_usb(NULL, &m);
         sink_ble(NULL, &m);
@@ -145,7 +236,8 @@ static void from_usb(void *ctx, const midi_msg *m)
     if (m->kind == MIDI_KIND_SYSEX) {
         if (m->flags & MIDI_SYSEX_START) {
             upd_capturing = m->len >= 3 && ((m->b[1] == 0x00 && m->b[2] == 0x32) ||
-                                            (m->b[1] == 0x22 && m->b[2] == 0x24));
+                                            (m->b[1] == 0x22 && m->b[2] == 0x24) ||
+                                            (m->b[1] == 0x7D && m->b[2] == 'F'));     /* editor */
             upd_acc_len = 0;
         }
         if (upd_capturing) {
@@ -156,7 +248,10 @@ static void from_usb(void *ctx, const midi_msg *m)
                 upd_capturing = 0;                 /* too long: not ours after all */
             }
             if (m->flags & MIDI_SYSEX_END) {
-                if (upd_capturing) fm1_update_port_frame(upd_acc, upd_acc_len);
+                if (upd_capturing) {
+                    if (editor_is_frame(upd_acc, upd_acc_len)) editor_handle(upd_acc, upd_acc_len);
+                    else fm1_update_port_frame(upd_acc, upd_acc_len);
+                }
                 upd_capturing = 0;
             }
             return;
@@ -215,6 +310,40 @@ static int drain_ble(void)
     return 1;
 }
 
+/* messages from other tasks (the UI's keyboard and knobs): one port byte + the message */
+void bridge_inject(int port, const midi_msg *m)
+{
+    u8 tmp[1 + sizeof(midi_msg)];
+    tmp[0] = (u8)port;
+    memcpy(tmp + 1, m, sizeof *m);
+    cbuf_write(&inj_cbuf, tmp, sizeof tmp);
+}
+
+/* straight to an output port, no routes or filters (the composer); logged as ">PORT" */
+void bridge_send_to(int port, const midi_msg *m)
+{
+    bridge_inject(port | 0x80, m);
+}
+
+static int drain_inject(void)
+{
+    u8 tmp[1 + sizeof(midi_msg)];
+    midi_msg m;
+    if (cbuf_get_data_len(&inj_cbuf) < sizeof tmp) return 0;
+    cbuf_read(&inj_cbuf, tmp, sizeof tmp);
+    memcpy(&m, tmp + 1, sizeof m);
+    if (tmp[0] & 0x80) {
+        int port = tmp[0] & 0x7F;
+        if (port == MIDI_PORT_USB) sink_usb(NULL, &m);
+        else if (port == MIDI_PORT_BLE) sink_ble(NULL, &m);
+        midilog_add_out(port, &m);
+        router.count_out[port]++;
+    } else {
+        router_feed(&router, tmp[0], &m);
+    }
+    return 1;
+}
+
 static int drain_trs(void)
 {
     u8 buf[64];
@@ -228,9 +357,30 @@ static int drain_trs(void)
 
 static void log_tap(void *ctx, int src, const midi_msg *m)
 {
+    u32 now = timer_get_ms();
     (void)ctx;
     midilog_add(src, m);
+    stats_add(&stats, m, now);
+    if (recorder.recording && src != MIDI_PORT_KBD) rec_add(&recorder, m, now);   /* what came in, not what we play */
 }
+
+static int playback_step(void)
+{
+    midi_msg m;
+    int n = 0;
+    u32 now = timer_get_ms();
+    while (n < 16 && rec_next(&recorder, now, &m)) {
+        if (rec_ports & 1) sink_usb(NULL, &m);
+        if (rec_ports & 2) sink_ble(NULL, &m);
+        n++;
+    }
+    return n > 0;
+}
+
+midi_stats *bridge_stats(void) { return &stats; }
+void bridge_stats_reset(void) { stats_reset(&stats); }
+midi_recorder *bridge_recorder(void) { return &recorder; }
+void bridge_recorder_ports(u8 mask) { rec_ports = mask; }
 
 static void bridge_task(void *p)
 {
@@ -238,9 +388,15 @@ static void bridge_task(void *p)
     midilog_init();
     for (;;) {
         int busy = 0;
+        health_bridge_alive();
         busy |= drain_trs();
         busy |= drain_usb();
         busy |= drain_ble();
+        busy |= drain_inject();
+        busy |= playback_step();
+        busy |= clock_step();
+        link_watch();
+        busy |= link_panic_step();
         busy |= panic_step();
         if (ble_pending) ble_flush();                  /* one notification per burst */
         fm1_update_poll();                             /* handshake replies; a session blocks here */
@@ -272,16 +428,21 @@ midi_router *bridge_router(void)
 void bridge_init(void)
 {
     router_init(&router, settings_get()->routes);
-    router.filters = settings_get()->filters;
+    settings_apply_router(settings_get(), &router);
     router_set_sink(&router, MIDI_PORT_USB, sink_usb, NULL);
     router_set_sink(&router, MIDI_PORT_BLE, sink_ble, NULL);
     router_set_tap(&router, log_tap, NULL);
+    stats_reset(&stats);
+    rec_init(&recorder);
+    merge_init(&merge_usb);
+    merge_init(&merge_ble);
     midi_parser_init(&trs_parser, from_trs, NULL);
     usbmidi_dec_init(&usb_dec, from_usb, NULL);
     blemidi_dec_init(&ble_dec, from_ble, NULL);
     blemidi_enc_init(&ble_enc, 20);
     cbuf_init(&usb_cbuf, usb_ring, sizeof usb_ring);
     cbuf_init(&ble_cbuf, ble_ring, sizeof ble_ring);
+    cbuf_init(&inj_cbuf, inj_ring, sizeof inj_ring);
     usb_midi_set_rx_handler(0, NULL, usb_rx_isr);
     ble_port_set_rx(NULL, ble_rx_cb);
     uart_init_trs();

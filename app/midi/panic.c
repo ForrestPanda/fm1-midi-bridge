@@ -1,14 +1,15 @@
 /* SPDX-License-Identifier: MIT */
 #include "panic.h"
 
-void midi_panic_start(midi_panic *p) { p->i = 0; }
+void midi_panic_start(midi_panic *p) { p->i = 0; p->end = MIDI_PANIC_COUNT; }
+void midi_panic_start_short(midi_panic *p) { p->i = 0; p->end = MIDI_PANIC_SHORT_COUNT; }
 
-int midi_panic_active(const midi_panic *p) { return p->i < MIDI_PANIC_COUNT; }
+int midi_panic_active(const midi_panic *p) { return p->i < p->end; }
 
 int midi_panic_next(midi_panic *p, midi_msg *out)
 {
     uint16_t i = p->i;
-    if (i >= MIDI_PANIC_COUNT) return 0;
+    if (i >= p->end) return 0;
     out->kind = MIDI_KIND_CHANNEL;
     out->flags = 0;
     out->len = 3;

@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FM-1 MIDI bridge editor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#111; --fg:#eee; --dim:#888; --acc:#4caf50; --card:#1b1b1b; --line:#333; }
+  body { font: 14px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); margin: 0; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 8px; } h2 { font-size: 14px; margin: 0 0 8px; color: var(--acc); }
+  .bar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom: 12px; }
+  button { background:#2a2a2a; color:var(--fg); border:1px solid var(--line); padding:6px 12px; border-radius:4px; cursor:pointer; }
+  button:hover { border-color: var(--acc); } button:disabled { opacity:.4; cursor:default; }
+  #status { color: var(--dim); }
+  * { box-sizing: border-box; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); gap: 12px; }
+  .card { background: var(--card); border:1px solid var(--line); border-radius:6px; padding: 12px; min-width: 0; overflow: hidden; }
+  label { display:flex; justify-content:space-between; align-items:center; gap:8px; padding: 3px 0; flex-wrap: wrap; min-width: 0; }
+  label > span { display:flex; gap:4px; flex-wrap: wrap; justify-content: flex-end; }
+  select, input[type=number] { background:#222; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:2px 4px; width: 120px; max-width: 100%; }
+  input[type=number] { width: 70px; }
+  .chmask { display:grid; grid-template-columns: repeat(auto-fill, minmax(34px, 1fr)); gap:2px; font-size:11px; }
+  .chmask label { justify-content:center; gap:2px; padding:0; flex-wrap: nowrap; }
+  .chmask input { margin: 0; }
+  table { width:100%; border-collapse: collapse; font-size:12px; } td { padding: 2px 4px; border-bottom: 1px solid var(--line); }
+  #log { font: 12px/1.3 ui-monospace, monospace; height: 180px; overflow:auto; background:#0b0b0b; padding:6px; white-space:pre; }
+  .dim { color: var(--dim); }
+</style>
+</head>
+<body>
+<h1>FM-1 MIDI bridge editor</h1>
+<div class="bar">
+  <button id="connect">Connect</button>
+  <button id="read" disabled>Read from device</button>
+  <button id="write" disabled>Write to device</button>
+  <button id="refresh" disabled>Status</button>
+  <span id="status">Web MIDI needs Chrome or Edge, and the page served from localhost or a file.</span>
+</div>
+<div class="grid">
+  <div class="card"><h2>Routes</h2><div id="routes"></div></div>
+  <div class="card"><h2>Route options</h2>
+    <label>Route <select id="optroute"></select></label>
+    <label>Remap channel <select id="opt_remap"></select></label>
+    <label>Clock / transport <input type="checkbox" id="opt_clock"></label>
+    <label>SysEx <input type="checkbox" id="opt_sysex"></label>
+    <div class="dim">Channels that pass</div><div class="chmask" id="opt_ch"></div>
+  </div>
+  <div class="card"><h2>Inputs</h2><div id="inputs"></div></div>
+  <div class="card"><h2>Keyboard</h2>
+    <label>Keys send MIDI <input type="checkbox" id="kbd_enabled"></label>
+    <label>Channel <select id="kbd_channel"></select></label>
+    <label>Octave <input type="number" id="kbd_octave" min="-3" max="3"></label>
+    <label>Velocity <input type="number" id="kbd_velocity" min="1" max="127"></label>
+    <label>Velocity source <select id="kbd_vel_source"><option value="0">fixed</option><option value="1">MASTER pot</option></select></label>
+  </div>
+  <div class="card"><h2>Button MIDI</h2><div id="buttons"></div></div>
+  <div class="card"><h2>Key MIDI</h2><div class="dim">A key with a job no longer plays its note.</div><div id="keys"></div></div>
+  <div class="card"><h2>Filters</h2>
+    <label>Drop clock (F8) <input type="checkbox" id="f_clock"></label>
+    <label>Drop active sensing (FE) <input type="checkbox" id="f_as"></label>
+    <label>Drop SysEx <input type="checkbox" id="f_sx"></label>
+    <label>Panic on link loss <input type="checkbox" id="f_pod"></label>
+    <label>Note collision guard <input type="checkbox" id="merge_guard"></label>
+  </div>
+  <div class="card"><h2>Clock master</h2>
+    <label>Tempo (bpm) <input type="number" id="clock_bpm" min="20" max="300"></label>
+    <label>Send to <select id="clock_to"><option value="1">USB</option><option value="2">BLE</option><option value="3">USB + BLE</option></select></label>
+    <div class="dim">Start and stop from the Clock page on the device (PLAY).</div>
+  </div>
+  <div class="card"><h2>Presets</h2><div id="presets"></div><div class="dim">Load applies at once. Save stores the settings as they are on the device, so write first.</div></div>
+  <div class="card"><h2>Bluetooth</h2>
+    <label>Mode <select id="ble_mode"><option value="0">peripheral</option><option value="1">host</option></select></label>
+    <label>Link <select id="ble_link"><option value="0">low latency</option><option value="1">power saving</option></select></label>
+    <label>Pair on connect (host) <input type="checkbox" id="ble_host_pair"></label>
+    <label>Auto reconnect (host) <input type="checkbox" id="ble_host_auto"></label>
+  </div>
+  <div class="card"><h2>USB and display</h2>
+    <label>USB MIDI <input type="checkbox" id="usb_enabled"></label>
+    <label>Backlight off after <select id="backlight"><option value="0">never</option><option value="1">10 s</option><option value="2">30 s</option><option value="3">1 min</option><option value="4">5 min</option></select></label>
+    <label>Invert colours <input type="checkbox" id="invert"></label>
+  </div>
+  <div class="card"><h2>Backup</h2>
+    <label><span class="dim">Settings as a JSON file</span> <span><button id="export" disabled>Export</button> <button id="import">Import</button></span></label>
+    <input type="file" id="importfile" accept=".json,application/json" style="display:none">
+    <div class="dim">Import fills the form; click Write to send it to the device.</div>
+  </div>
+  <div class="card"><h2>Firmware</h2>
+    <label><span class="dim">Package (.fwsc)</span> <input type="file" id="fwfile" accept=".fwsc"></label>
+    <label><span id="fwinfo" class="dim">no package loaded</span> <button id="fwinstall" disabled>Install</button></label>
+    <div id="fwlog" class="dim" style="font: 12px ui-monospace, monospace; white-space: pre-wrap; max-height: 120px; overflow: auto"></div>
+  </div>
+  <div class="card"><h2>Device</h2><table id="devinfo"></table></div>
+  <div class="card"><h2>Send MIDI</h2>
+    <label>Bytes (hex) <input type="text" id="tx" value="90 3C 64" style="width:160px;background:#222;color:#eee;border:1px solid #333;border-radius:3px;padding:2px 4px"></label>
+    <label>To <select id="txport"><option value="1">USB</option><option value="2">BLE</option><option value="3">USB + BLE</option></select></label>
+    <label><span class="dim">Status bytes allowed; SysEx too.</span> <button id="txsend" disabled>Send</button></label>
+    <div class="dim">Quick: <a href="#" data-tx="90 3C 64">note on</a> · <a href="#" data-tx="80 3C 00">note off</a> · <a href="#" data-tx="B0 07 7F">volume</a> · <a href="#" data-tx="C0 05">program 6</a> · <a href="#" data-tx="F0 7E 7F 06 01 F7">device inquiry</a> · <a href="#" data-tx="FA">start</a> · <a href="#" data-tx="FC">stop</a></div>
+  </div>
+  <div class="card" style="grid-column: 1 / -1"><h2>MIDI from the device</h2><div id="log"></div></div>
+</div>
+<script>
+'use strict';
+// ---- settings layout (app/settings.h v5, 128 bytes; tests/test_editor.c checks these offsets)
+const SIZE = 212, VERSION = 9, MAGIC = 0x314D4631;
+const OFF = { magic:0, version:4, size:5, routes:6, filters:8, usb_enabled:9, backlight:10, invert:11, ble_mode:12, ble_host_pair:13,
+              host_peer:14, ble_link:21, kbd_enabled:22, kbd_channel:23, kbd_octave:24, kbd_velocity:25, route:26, input:90, btn:106, key:126, panic_on_disconnect:180, fav:182, clock_bpm:202, clock_to:204, merge_guard:205, kbd_vel_source:206, ble_host_auto:207, crc:210 };
+const PORTS = ['TRS', 'USB', 'BLE', 'KBD'];
+const ROUTES = [[0,2],[0,1],[1,2],[2,1],[3,1],[3,2]];           // valid (src,dst)
+const routeBit = (s,d) => 1 << (s*4+d), routeIndex = (s,d) => s*4+d;
+const SLOTS = ['FX','SCL','ENV','LFO','EDIT','SEQ','ARP','PLAY','REC'];
+const VEL = ['linear','soft','hard','fixed'];
+const NOTES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const keyName = i => NOTES[(53+i)%12] + (Math.floor((53+i)/12)-1);
+const PREFIX = [0xF0, 0x7D, 0x46, 0x4D, 0x31];
+
+let midiIn = null, midiOut = null, settings = new Uint8Array(SIZE), pending = null;
+const $ = id => document.getElementById(id);
+const status = t => $('status').textContent = t;
+const log = t => { const l = $('log'); l.textContent += t + '\n'; l.scrollTop = l.scrollHeight; };
+
+// ---- 7-bit packing, LSB first, as the device does
+function pack7(bytes) { const out = []; let acc = 0, nb = 0; for (const b of bytes) { acc |= b << nb; nb += 8; while (nb >= 7) { out.push(acc & 0x7F); acc >>>= 7; nb -= 7; } } if (nb) out.push(acc & 0x7F); return out; }
+function unpack7(bytes) { const out = []; let acc = 0, nb = 0; for (const b of bytes) { acc |= (b & 0x7F) << nb; nb += 7; if (nb >= 8) { out.push(acc & 0xFF); acc >>>= 8; nb -= 8; } } return out; }
+
+function send(cmd, payload) {
+  const msg = [...PREFIX, cmd, ...(payload || []), 0xF7];
+  midiOut.send(msg);
+  return new Promise((resolve, reject) => { pending = { cmd: cmd | 0x40, resolve }; setTimeout(() => { if (pending && pending.cmd === (cmd|0x40)) { pending = null; reject(new Error('no answer')); } }, 2000); });
+}
+
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const CC_NAMES = {0:'bank msb',1:'mod',2:'breath',4:'foot',7:'volume',10:'pan',11:'expr',32:'bank lsb',64:'sustain',65:'porta',66:'sostenuto',67:'soft',71:'resonance',74:'cutoff',120:'all sound off',121:'reset ctrls',123:'all notes off'};
+const noteName = n => NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
+function decode(d) {
+  const s = d[0], ch = (s & 15) + 1;
+  if (s === 0xF0) return (d[1] === 0x7E && d[3] === 0x06 && d[4] === 0x01) ? 'SysEx inquiry' : (d[1] === 0x7E && d[3] === 0x06 && d[4] === 0x02) ? 'SysEx inquiry reply' : `SysEx ${d.length}B`;
+  if (s >= 0xF8) return {0xF8:'Clock',0xFA:'Start',0xFB:'Continue',0xFC:'Stop',0xFE:'Active sensing',0xFF:'Reset'}[s] || `Realtime ${s.toString(16)}`;
+  if (s >= 0xF0) return {0xF1:'MTC',0xF2:'SongPos ' + ((d[1]|d[2]<<7)),0xF3:'SongSel ' + d[1],0xF6:'TuneReq'}[s] || `Common ${s.toString(16)}`;
+  switch (s & 0xF0) {
+    case 0x80: return `${ch} NoteOff ${noteName(d[1])} ${d[2]}`;
+    case 0x90: return `${ch} Note${d[2] ? 'On' : 'Off'} ${noteName(d[1])} ${d[2]}`;
+    case 0xA0: return `${ch} PolyAT ${noteName(d[1])} ${d[2]}`;
+    case 0xB0: return `${ch} CC${d[1]}${CC_NAMES[d[1]] ? ' ' + CC_NAMES[d[1]] : ''} ${d[2]}`;
+    case 0xC0: return `${ch} Program ${d[1] + 1}`;
+    case 0xD0: return `${ch} ChanAT ${d[1]}`;
+    case 0xE0: return `${ch} Bend ${(d[1] | d[2] << 7) - 8192 >= 0 ? '+' : ''}${(d[1] | d[2] << 7) - 8192}`;
+  }
+  return '';
+}
+function onMidi(ev) {
+  const d = ev.data;
+  if (fwHandler && d[0] === 0xF0 && d[1] === 0x00 && d[2] === 0x32) { fwHandler(d); return; }
+  if (d[0] === 0xF0 && d[1] === 0x7D && d[2] === 0x46 && d[3] === 0x4D && d[4] === 0x31) {
+    const cmd = d[5], body = Array.from(d.slice(6, d.length - 1));
+    if (pending && pending.cmd === cmd) { const p = pending; pending = null; p.resolve(body); }
+    return;
+  }
+  const hex = Array.from(d).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+  log(hex.padEnd(24) + '  ' + decode(Array.from(d)));
+}
+
+async function connect() {
+  try {
+    const access = await navigator.requestMIDIAccess({ sysex: true });
+    const pick = (ports) => [...ports.values()].find(p => /fm-1|fm1|midi/i.test(p.name)) || [...ports.values()][0];
+    midiIn = pick(access.inputs); midiOut = pick(access.outputs);
+    if (!midiIn || !midiOut) { status('no MIDI device found'); return; }
+    midiIn.onmidimessage = onMidi;
+    status('connected to ' + midiIn.name);
+    $('read').disabled = $('write').disabled = $('refresh').disabled = $('txsend').disabled = $('export').disabled = false;
+    $('fwinstall').disabled = !fwImage;
+    await readInfo(); await readSettings(); await readStatus(); await readPresets();
+  } catch (e) { status('MIDI error: ' + e.message); }
+}
+
+async function readInfo() {
+  const body = await send(0x01);
+  const [ident, ver, sver, ssize] = String.fromCharCode(...body).split(';');
+  $('devinfo').innerHTML = `<tr><td>Firmware</td><td>${ident}</td></tr><tr><td>Version</td><td>${ver}</td></tr><tr><td>Settings</td><td>v${sver}, ${ssize} bytes</td></tr>`;
+  if (+sver !== VERSION || +ssize !== SIZE) status(`settings layout mismatch: device v${sver}/${ssize}, page v${VERSION}/${SIZE}`);
+}
+async function readSettings() { settings = new Uint8Array(unpack7(await send(0x02)).slice(0, SIZE)); fromBlob(); status('settings read'); }
+async function writeSettings() { toBlob(); const r = await send(0x03, pack7(Array.from(settings))); status(r[0] === 0 ? 'settings written and applied' : 'device refused: code ' + r[0]); }
+async function readPresets() {
+  const used = await send(0x05);
+  $('presets').innerHTML = used.map((u, i) => `<label>Preset ${i+1} <span class="dim">${u ? 'used' : 'empty'}</span> <span><button onclick="presetOp(0x06,${i})">save</button><button onclick="presetOp(0x07,${i})" ${u ? '' : 'disabled'}>load</button><button onclick="presetOp(0x08,${i})" ${u ? '' : 'disabled'}>clear</button></span></label>`).join('');
+}
+async function presetOp(cmd, slot) {
+  try { const r = await send(cmd, [slot]); status(r[0] === 0 ? 'ok' : 'failed: ' + r[0]); await readPresets(); if (cmd === 0x07) await readSettings(); }
+  catch (e) { status(e.message); }
+}
+async function readStatus() {
+  const b = unpack7(await send(0x04)); const u32 = i => b[i] | b[i+1]<<8 | b[i+2]<<16 | b[i+3]<<24;
+  let rows = PORTS.map((p, i) => `<tr><td>${p} in/out</td><td>${u32(i*4)} / ${u32(16+i*4)}</td></tr>`).join('');
+  rows += `<tr><td>Dropped</td><td>${u32(32)}</td></tr><tr><td>USB</td><td>${b[36] ? 'enumerated' : '--'}</td></tr><tr><td>BLE</td><td>${['advertising','connected','host'][b[38]]}${b[37] ? ' (ready)' : ''}</td></tr>`;
+  $('devinfo').innerHTML += rows;
+}
+
+// ---- blob <-> form
+const u16 = o => settings[o] | settings[o+1] << 8, setU16 = (o, v) => { settings[o] = v & 0xFF; settings[o+1] = (v >> 8) & 0xFF; };
+const i8 = o => (settings[o] << 24) >> 24;
+function build() {
+  $('routes').innerHTML = ROUTES.map(([s,d], i) => `<label>${PORTS[s]} in → ${PORTS[d]} out <input type="checkbox" id="r${i}"></label>`).join('');
+  $('optroute').innerHTML = ROUTES.map(([s,d], i) => `<option value="${i}">${PORTS[s]} → ${PORTS[d]}</option>`).join('');
+  $('opt_remap').innerHTML = '<option value="0">keep</option>' + [...Array(16)].map((_, i) => `<option value="${i+1}">${i+1}</option>`).join('');
+  $('opt_ch').innerHTML = [...Array(16)].map((_, i) => `<label>${i+1}<input type="checkbox" id="ch${i}"></label>`).join('');
+  $('kbd_channel').innerHTML = [...Array(16)].map((_, i) => `<option value="${i}">${i+1}</option>`).join('');
+  $('inputs').innerHTML = ['TRS', 'KBD'].map(p => { const i = PORTS.indexOf(p); return `<label>${p} transpose <input type="number" id="tr${i}" min="-24" max="24"></label><label>${p} velocity curve <select id="vc${i}">${VEL.map((v,k)=>`<option value="${k}">${v}</option>`).join('')}</select></label><label>${p} fixed velocity <input type="number" id="vf${i}" min="1" max="127"></label>`; }).join('');
+  const jobSel = (id, none) => `<select id="${id}"><option value="0">${none}</option><option value="1">note</option><option value="2">CC</option><option value="3">program</option></select>`;
+  $('buttons').innerHTML = SLOTS.map((n, i) => `<label>${n} <span>${jobSel('bt'+i, 'none')} <input type="number" id="bn${i}" min="0" max="127"></span></label>`).join('');
+  $('keys').innerHTML = [...Array(27)].map((_, i) => `<label>${keyName(i)} <span>${jobSel('kt'+i, 'keyboard')} <input type="number" id="kn${i}" min="0" max="127"></span></label>`).join('');
+  $('optroute').onchange = showOpt;
+  ['opt_remap','opt_clock','opt_sysex', ...[...Array(16)].map((_, i) => 'ch'+i)].forEach(id => $(id).onchange = storeOpt);
+}
+function showOpt() {
+  const [s,d] = ROUTES[+$('optroute').value], o = OFF.route + routeIndex(s,d) * 4;
+  const mask = u16(o); for (let i = 0; i < 16; i++) $('ch'+i).checked = !!(mask & (1 << i));
+  $('opt_remap').value = settings[o+2]; $('opt_clock').checked = !!(settings[o+3] & 1); $('opt_sysex').checked = !!(settings[o+3] & 2);
+}
+function storeOpt() {
+  const [s,d] = ROUTES[+$('optroute').value], o = OFF.route + routeIndex(s,d) * 4;
+  let mask = 0; for (let i = 0; i < 16; i++) if ($('ch'+i).checked) mask |= 1 << i;
+  setU16(o, mask || 0xFFFF); settings[o+2] = +$('opt_remap').value; settings[o+3] = ($('opt_clock').checked ? 1 : 0) | ($('opt_sysex').checked ? 2 : 0);
+}
+function fromBlob() {
+  const routes = u16(OFF.routes); ROUTES.forEach(([s,d], i) => $('r'+i).checked = !!(routes & routeBit(s,d)));
+  $('f_pod').checked = !!settings[OFF.panic_on_disconnect];
+  $('merge_guard').checked = !!settings[OFF.merge_guard]; $('clock_bpm').value = u16(OFF.clock_bpm); $('clock_to').value = settings[OFF.clock_to];
+  $('kbd_vel_source').value = settings[OFF.kbd_vel_source]; $('ble_host_auto').checked = !!settings[OFF.ble_host_auto];
+  $('f_clock').checked = !!(settings[OFF.filters] & 1); $('f_as').checked = !!(settings[OFF.filters] & 2); $('f_sx').checked = !!(settings[OFF.filters] & 4);
+  $('usb_enabled').checked = !!settings[OFF.usb_enabled]; $('backlight').value = settings[OFF.backlight]; $('invert').checked = !!settings[OFF.invert];
+  $('ble_mode').value = settings[OFF.ble_mode]; $('ble_host_pair').checked = !!settings[OFF.ble_host_pair]; $('ble_link').value = settings[OFF.ble_link];
+  $('kbd_enabled').checked = !!settings[OFF.kbd_enabled]; $('kbd_channel').value = settings[OFF.kbd_channel]; $('kbd_octave').value = i8(OFF.kbd_octave); $('kbd_velocity').value = settings[OFF.kbd_velocity];
+  for (const i of [0, 3]) { const o = OFF.input + i*4; $('tr'+i).value = i8(o); $('vc'+i).value = settings[o+1]; $('vf'+i).value = settings[o+2]; }
+  SLOTS.forEach((_, i) => { $('bt'+i).value = settings[OFF.btn + i*2]; $('bn'+i).value = settings[OFF.btn + i*2 + 1]; });
+  for (let i = 0; i < 27; i++) { $('kt'+i).value = settings[OFF.key + i*2]; $('kn'+i).value = settings[OFF.key + i*2 + 1]; }
+  showOpt();
+}
+function toBlob() {
+  storeOpt();
+  let routes = 0; ROUTES.forEach(([s,d], i) => { if ($('r'+i).checked) routes |= routeBit(s,d); }); setU16(OFF.routes, routes);
+  settings[OFF.panic_on_disconnect] = +$('f_pod').checked;
+  settings[OFF.merge_guard] = +$('merge_guard').checked; setU16(OFF.clock_bpm, +$('clock_bpm').value); settings[OFF.clock_to] = +$('clock_to').value;
+  settings[OFF.kbd_vel_source] = +$('kbd_vel_source').value; settings[OFF.ble_host_auto] = +$('ble_host_auto').checked;
+  settings[OFF.filters] = ($('f_clock').checked ? 1 : 0) | ($('f_as').checked ? 2 : 0) | ($('f_sx').checked ? 4 : 0);
+  settings[OFF.usb_enabled] = +$('usb_enabled').checked; settings[OFF.backlight] = +$('backlight').value; settings[OFF.invert] = +$('invert').checked;
+  settings[OFF.ble_mode] = +$('ble_mode').value; settings[OFF.ble_host_pair] = +$('ble_host_pair').checked; settings[OFF.ble_link] = +$('ble_link').value;
+  settings[OFF.kbd_enabled] = +$('kbd_enabled').checked; settings[OFF.kbd_channel] = +$('kbd_channel').value; settings[OFF.kbd_octave] = +$('kbd_octave').value & 0xFF; settings[OFF.kbd_velocity] = +$('kbd_velocity').value;
+  for (const i of [0, 3]) { const o = OFF.input + i*4; settings[o] = +$('tr'+i).value & 0xFF; settings[o+1] = +$('vc'+i).value; settings[o+2] = +$('vf'+i).value; }
+  SLOTS.forEach((_, i) => { settings[OFF.btn + i*2] = +$('bt'+i).value; settings[OFF.btn + i*2 + 1] = +$('bn'+i).value; });
+  for (let i = 0; i < 27; i++) { settings[OFF.key + i*2] = +$('kt'+i).value; settings[OFF.key + i*2 + 1] = +$('kn'+i).value; }
+  setU16(OFF.magic, MAGIC & 0xFFFF); setU16(OFF.magic + 2, MAGIC >>> 16); settings[OFF.version] = VERSION; settings[OFF.size] = SIZE;
+}
+build();
+async function sendMidi() {
+  const bytes = $('tx').value.trim().split(/[\s,]+/).filter(Boolean).map(h => parseInt(h, 16));
+  if (bytes.some(isNaN)) { status('bad hex'); return; }
+  try { const r = await send(0x09, [+$('txport').value, ...pack7(bytes)]); status(r[0] === 0 ? 'sent' : 'refused'); } catch (e) { status(e.message); }
+}
+// ---- backup
+function exportSettings() {
+  toBlob();
+  const hex = Array.from(settings).map(b => b.toString(16).padStart(2, '0')).join('');
+  const blob = new Blob([JSON.stringify({ device: 'fm1-midi-bridge', settings_version: VERSION, size: SIZE, settings_hex: hex }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'fm1-settings.json'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function importSettings(file) {
+  file.text().then(t => {
+    const j = JSON.parse(t);
+    if (j.settings_version !== VERSION || j.size !== SIZE) { status(`file is v${j.settings_version}/${j.size}, page is v${VERSION}/${SIZE}`); return; }
+    const bytes = j.settings_hex.match(/../g).map(h => parseInt(h, 16));
+    settings = new Uint8Array(bytes.slice(0, SIZE)); fromBlob(); status('imported; click Write to apply');
+  }).catch(e => status('import failed: ' + e.message));
+}
+$('export').onclick = exportSettings;
+$('import').onclick = () => $('importfile').click();
+$('importfile').onchange = ev => { if (ev.target.files[0]) importSettings(ev.target.files[0]); ev.target.value = ''; };
+
+// ---- firmware update: the M-VAVE / Felucca installer protocol (docs/update-protocol.md)
+//   frame F0 pack7(00 59 cmd len24 payload chk) F7, chk = ~sum(payload)
+//   0x11 handshake -> identity (27 bytes); raw F0 22 24 35 7F F7 = upgrade;
+//   device asks 0x30 reads (flags, addr32, len24) of the logical image; 0xE0000000 / 0xF0000000 = "success" checkpoints
+let fwRaw = null, fwImage = null, fwIdent = '';
+const fwlog = t => { const l = $('fwlog'); l.textContent += t + '\n'; l.scrollTop = l.scrollHeight; };
+function logicalImage(raw) {               // the package without the 20 marker bytes (one after each of the first 20 48-byte blocks)
+  const out = []; for (let i = 0; i < 20; i++) for (let k = 0; k < 47; k++) out.push(raw[i * 48 + k]);
+  for (let i = 960; i < raw.length; i++) out.push(raw[i]); return out;
+}
+function productOf(raw) { let t = ''; for (let i = 0; i < 20; i++) { const m = raw[i * 48 + 47]; if (m !== 0x7D) t += String.fromCharCode((m - i - 1) & 0xFF); } return t; }
+$('fwfile').onchange = ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  f.arrayBuffer().then(b => { fwRaw = new Uint8Array(b); fwImage = logicalImage(fwRaw); fwIdent = productOf(fwRaw);
+    $('fwinfo').textContent = `${f.name}: ${fwRaw.length} bytes, identity ${fwIdent}`; $('fwinstall').disabled = !midiOut; });
+};
+function frameMsg(cmd, payload) { const body = [0, 0x59, cmd, payload.length & 0xFF, (payload.length >> 8) & 0xFF, 0, ...payload]; body.push(~payload.reduce((a, b) => a + b, 0) & 0xFF); return [0xF0, ...pack7(body), 0xF7]; }
+function parseFrame(d) {                   // -> {cmd, payload} or null
+  if (d[0] !== 0xF0 || d[d.length - 1] !== 0xF7) return null;
+  const u = unpack7(Array.from(d.slice(1, -1)));
+  if (u.length < 7 || u[0] !== 0 || u[1] !== 0x59) return null;
+  const len = u[3] | u[4] << 8 | u[5] << 16; if (len + 7 !== u.length) return null;
+  const payload = u.slice(6, 6 + len); if ((~payload.reduce((a, b) => a + b, 0) & 0xFF) !== u[u.length - 1]) return null;
+  return { cmd: u[2], payload };
+}
+function readResponse(addr, data, fl) {   // answer to a 0x30 read request
+  const n = data.length;
+  const body = [0, 0x59, 0x30, (n + 8) & 0xFF, ((n + 8) >> 8) & 0xFF, 0, fl, addr & 0xFF, (addr >> 8) & 0xFF, (addr >> 16) & 0xFF, (addr >>> 24) & 0xFF, n & 0xFF, (n >> 8) & 0xFF, 0, ...data];
+  body.push(~body.slice(6).reduce((a, b) => a + b, 0) & 0xFF);
+  return [0xF0, ...pack7(body), 0xF7];
+}
+let fwHandler = null;                      // while installing, device frames go here
+function fwIdentity(timeoutMs) {           // handshake: resolves the identity text or null
+  return new Promise(resolve => {
+    const t = setTimeout(() => { fwHandler = null; resolve(null); }, timeoutMs);
+    fwHandler = d => { const f = parseFrame(d); if (f && f.cmd === 0x11 && f.payload.length === 27) { clearTimeout(t); fwHandler = null; resolve(String.fromCharCode(...f.payload.filter(b => b))); } };
+    midiOut.send(frameMsg(0x11, []));
+  });
+}
+function fwServe(finishAddr, idleMs) {     // serve reads until the finish checkpoint; resolves true/false
+  return new Promise(resolve => {
+    let served = 0, timer = null;
+    const arm = () => { clearTimeout(timer); timer = setTimeout(() => { fwHandler = null; fwlog(`stopped answering after ${served} reads`); resolve(false); }, idleMs); };
+    fwHandler = d => {
+      const f = parseFrame(d); if (!f) return;
+      if (f.cmd === 0x11) { midiOut.send(frameMsg(0x11, [])); return; }
+      if (f.cmd !== 0x30 || f.payload.length !== 8) return;
+      arm();
+      const fl = f.payload[0], addr = (f.payload[1] | f.payload[2] << 8 | f.payload[3] << 16 | f.payload[4] << 24) >>> 0, n = f.payload[5] | f.payload[6] << 8 | f.payload[7] << 16;
+      if (addr === 0xE0000000 || addr === 0xF0000000) { midiOut.send(readResponse(addr, [0x73,0x75,0x63,0x63,0x65,0x73,0x73,0], 0)); if (addr === finishAddr) { clearTimeout(timer); fwHandler = null; resolve(true); } return; }
+      if (n > 512 || addr + n > fwImage.length) { fwlog(`bad request ${addr.toString(16)}+${n}`); return; }
+      midiOut.send(readResponse(addr, fwImage.slice(addr, addr + n), fl)); served++;
+      if (served % 50 === 0) fwlog(`${served} reads, ${Math.min(99, Math.floor((addr + n) * 100 / fwImage.length))}%`);
+    };
+    arm();
+    midiOut.send([0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7]);
+  });
+}
+async function fwWaitFor(pred, timeoutMs) {   // re-pick ports as the device re-enumerates, until the identity matches
+  const end = Date.now() + timeoutMs;
+  while (Date.now() < end) {
+    await new Promise(r => setTimeout(r, 1000));
+    try {
+      const access = await navigator.requestMIDIAccess({ sysex: true });
+      const pick = ports => [...ports.values()].find(p => /fm-1|fm1|ota|midi/i.test(p.name));
+      const i = pick(access.inputs), o = pick(access.outputs);
+      if (!i || !o) continue;
+      midiIn = i; midiOut = o; midiIn.onmidimessage = onMidi;
+      const id = await fwIdentity(1500);
+      if (id && pred(id)) return id;
+    } catch (e) { }
+  }
+  return null;
+}
+async function fwInstall() {
+  if (!fwImage) return;
+  $('fwinstall').disabled = true; $('fwlog').textContent = '';
+  try {
+    let id = await fwIdentity(2000);
+    if (!id) { fwlog('no answer to the handshake'); return; }
+    fwlog(`device: ${id}`);
+    if (id.split('_')[0].replace(/^ota-/, '') !== fwIdent.split('_')[0]) { fwlog(`package is for ${fwIdent}, device is ${id}`); return; }
+    if (!id.startsWith('ota-')) {
+      fwlog('step 1: the running firmware checks the package and starts the loader');
+      if (!await fwServe(0xE0000000, 8000)) return;
+      fwlog('loader starting, waiting for it to appear...');
+      id = await fwWaitFor(i => i.startsWith('ota-'), 40000);
+      if (!id) { fwlog('the loader did not appear; replug and try again (nothing was written)'); return; }
+      fwlog(`loader: ${id}`);
+    }
+    fwlog('step 2: the loader writes the package');
+    if (!await fwServe(0xF0000000, 180000)) { fwlog('the loader stopped; replug and run Install again to finish'); return; }
+    fwlog('written, waiting for the restart...');
+    id = await fwWaitFor(i => !i.startsWith('ota-'), 40000);
+    fwlog(id ? (id === fwIdent ? `done: ${id}` : `restarted as ${id} (expected ${fwIdent})`) : 'no answer after the restart; power-cycle the FM-1');
+    if (id) { await readInfo(); await readSettings(); }
+  } catch (e) { fwlog('error: ' + e.message); }
+  finally { fwHandler = null; $('fwinstall').disabled = !fwImage; }
+}
+$('fwinstall').onclick = fwInstall;
+$('txsend').onclick = sendMidi;
+document.querySelectorAll('[data-tx]').forEach(a => a.onclick = ev => { ev.preventDefault(); $('tx').value = a.dataset.tx; sendMidi(); });
+$('connect').onclick = connect; $('read').onclick = () => readSettings().catch(e => status(e.message));
+$('write').onclick = () => writeSettings().catch(e => status(e.message)); $('refresh').onclick = () => readInfo().then(readStatus).catch(e => status(e.message));
+</script>
+</body>
+</html>

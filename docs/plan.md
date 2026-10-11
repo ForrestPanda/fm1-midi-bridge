@@ -115,7 +115,43 @@
   Hold GLO on any page to toggle power saving (GLO LED lit = power saving, "ECO" in
   the main menu footer). Slave latency only delays phone -> FM-1 traffic; the FM-1's own sends still go out at
   the next event, so page-turn use from a TRS controller stays prompt in power saving.
-- `app.bin` 326 KB of 581 KB.
+- Keyboard mode (`app/midi/keys.c`, Keyboard page): the 27 keys send note on/off
+  (F3 = 53, octave -3..+3 via OCT-/OCT+ on the page, fixed velocity, channel 1..16) from
+  any page; the four knobs send CC 1 / 74 / 71 / 7 with absolute values while the
+  Keyboard page is open (KNOB1 belongs to the menus elsewhere). Router port KBD with
+  routes to USB and BLE, on by default. Key LEDs light while held. SAVE leaves the page.
+- Per-route options (Routing > Options ...): channel filter (all / one channel on the
+  panel, any mask from the editor), channel remap, clock/transport pass, SysEx pass.
+  Inputs page: TRS transpose and velocity curve (linear / soft / hard / fixed).
+- Button MIDI page: FX, SCL, ENV, LFO, EDIT, SEQ, ARP, PLAY, REC each send nothing, a
+  note, a CC (127 on press, 0 on release) or a program change, on the keyboard
+  channel. PLAY defaults to CC 64 as a page-turn pedal substitute. A mapped button no
+  longer reaches the UI; HOME, GLO, OCT-, OCT+, SAVE and SELECT stay the UI's. Any of
+  the 27 note keys can also take a job instead of its note (Button MIDI > Key: PRESETS
+  or a key press picks the key). Mapped buttons and keys work with the keyboard off.
+- Keyboard page: PRESETS encoder sends program changes, ALGORITHM sends bank MSB.
+- Activity LEDs: REC blinks on USB traffic, PLAY on BLE traffic (unless mapped).
+- Web editor (`web/editor.html`, `app/editor.c`): all settings over USB-MIDI SysEx,
+  `docs/web-editor.md`. Also a second MIDI monitor in the browser.
+- Learning-tool pages: Composer (any message by kind/channel/data or raw bytes, to
+  USB/BLE/both, auto note off, 4 favourites in settings v8), Connections (ports,
+  counters, activity, routes with their options), decoded log view (OCT+ on the log
+  page; `app/midi/decode.c`). Editor command 0x09 sends raw bytes to a port; the web
+  monitor decodes incoming messages.
+- Statistics page (`app/midi/stats.c`: counts by kind and channel, note/velocity
+  range, tempo from clock), Recorder page (`app/midi/recorder.c`: 2048 timed events,
+  loop, play to USB/BLE), MIDI reference page, inquiry reply decoding with a
+  manufacturer table.
+- Clock master page (bridge-loop accumulator, F8 at 24 ppq, Start/Stop), note
+  collision guard on both outputs (`app/midi/merge.c`), MASTER pot as keyboard
+  velocity (ADC PB6), host-mode auto reconnect to the stored peer (`ble_host_tick`).
+  Settings v9.
+- Robustness: `app/health.c` keeps boots, reset reason, watchdog resets and bridge
+  stalls in syscfg id 15 (System page); the UI task restarts the chip if the bridge
+  loop stops for 5 s (the SDK's own 4 s hardware watchdog covers the system task).
+  Web editor: settings export/import as JSON, firmware install with the installer
+  protocol (unverified on hardware).
+- `app.bin` see the footprint in README.
 
 ### Verify on hardware (UI)
 - Splash then main menu; SELECT scrolls; OCT+/OCT- navigate; HOME returns to the menu.

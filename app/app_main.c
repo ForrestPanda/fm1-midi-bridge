@@ -105,6 +105,9 @@ void app_main()
     extern void bt_ble_module_init(void);
     bt_ble_module_init();
 
+    extern void health_init(void);
+    health_init();
+
     extern void settings_init(void);
     settings_init();
 

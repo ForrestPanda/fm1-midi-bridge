@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "fm1_update.h"
 #include "util/crc16.h"
+#include "util/pack7.h"
 #include <string.h>
 
 /* ------------------------------------------------------------- helpers */
@@ -16,37 +17,8 @@ static void jl_enc(uint8_t *p, uint32_t n)                          /* JieLi hea
     }
 }
 
-uint32_t upd_pack7(const uint8_t *in, uint32_t n, uint8_t *out)   /* 8-to-7, LSB first */
-{
-    uint32_t acc = 0, nb = 0, o = 0;
-    while (n--) {
-        acc |= (uint32_t)*in++ << nb;
-        nb += 8;
-        while (nb >= 7) {
-            out[o++] = (uint8_t)(acc & 0x7Fu);
-            acc >>= 7;
-            nb -= 7;
-        }
-    }
-    if (nb) out[o++] = (uint8_t)(acc & 0x7Fu);
-    return o;
-}
-
-uint32_t upd_unpack7(const uint8_t *in, uint32_t n, uint8_t *out, uint32_t max)
-{
-    uint32_t acc = 0, nb = 0, o = 0;
-    while (n--) {
-        acc |= (uint32_t)(*in++ & 0x7Fu) << nb;
-        nb += 7;
-        if (nb >= 8) {
-            if (o < max) out[o] = (uint8_t)acc;
-            o++;
-            acc >>= 8;
-            nb -= 8;
-        }
-    }
-    return o;
-}
+uint32_t upd_pack7(const uint8_t *in, uint32_t n, uint8_t *out) { return pack7(in, n, out); }
+uint32_t upd_unpack7(const uint8_t *in, uint32_t n, uint8_t *out, uint32_t max) { return unpack7(in, n, out, max); }
 
 static uint32_t rd16(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8; }
 static uint32_t rd24(const uint8_t *p) { return rd16(p) | (uint32_t)p[2] << 16; }

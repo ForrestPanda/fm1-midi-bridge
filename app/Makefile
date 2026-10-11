@@ -204,11 +204,21 @@ c_SRC_FILES := \
 	$(PROJ)/midi/usbmidi.c \
 	$(PROJ)/midi/router.c \
 	$(PROJ)/midi/panic.c \
+	$(PROJ)/midi/keys.c \
+	$(PROJ)/midi/decode.c \
+	$(PROJ)/midi/compose.c \
+	$(PROJ)/midi/stats.c \
+	$(PROJ)/midi/recorder.c \
+	$(PROJ)/midi/merge.c \
 	$(PROJ)/settings.c \
 	$(PROJ)/util/crc16.c \
+	$(PROJ)/util/pack7.c \
 	$(PROJ)/input/matrix.c \
 	$(PROJ)/input/matrix_port.c \
 	$(PROJ)/settings_port.c \
+	$(PROJ)/editor.c \
+	$(PROJ)/health.c \
+	$(PROJ)/editor_port.c \
 	$(SDK)/apps/common/usb/usb_config.c \
 	$(SDK)/apps/common/usb/usb_epbuf_manager.c \
 	$(SDK)/apps/common/usb/device/descriptor.c \

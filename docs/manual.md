@@ -1,0 +1,263 @@
+# FM-1 MIDI bridge: user manual
+
+This firmware turns the M-VAVE FM-1 into a MIDI bridge and a small controller. It
+replaces the synthesizer firmware; the keys, knobs, buttons, screen, USB port,
+Bluetooth and the 3.5 mm MIDI input all stay in use, the sound engine does not.
+M-VAVE's own updater puts the original firmware back at any time.
+
+## What it does
+
+- **TRS MIDI IN** (the 3.5 mm jack, input only on the FM-1) is forwarded to USB and to
+  Bluetooth.
+- **USB MIDI** (the USB-C port, class compliant, no driver) is forwarded to Bluetooth,
+  and Bluetooth to USB.
+- **Bluetooth MIDI**: phones, tablets and computers connect to the FM-1, or, in host
+  mode, the FM-1 connects to a Bluetooth MIDI keyboard.
+- **The FM-1's own keys and knobs** send notes and control changes.
+- **Buttons and keys** can send a note, a control change or a program change, for
+  example to turn pages in a sheet-music app.
+- **A MIDI bench**: a log that decodes what passes, a composer that sends any message
+  by hand, statistics of what a device sends, a recorder with replay, a clock master
+  and a built-in reference. Good for learning MIDI with real gear on both ends.
+
+Every route can be switched on or off, filtered by channel, remapped to a channel,
+and told whether to pass clock and SysEx.
+
+## The panel
+
+![Splash screen](ui-examples/01-splash.png)
+
+![Main menu](ui-examples/02-main-menu.png)
+
+The screen shows a menu. The controls that drive it are always the same:
+
+| Control | Does |
+| --- | --- |
+| SELECT encoder (or PRESETS) | moves the highlight up and down |
+| OCT+ | OK: enters a page, toggles a switch, cycles a choice, confirms |
+| OCT- | back |
+| HOME | back to the main menu from anywhere |
+| KNOB1 | changes the highlighted value (numbers, choices) |
+| hold GLO | Bluetooth power saving on or off, from any page |
+
+The other buttons and the 27 keys are free for MIDI jobs. The button LEDs mean:
+HOME lit = main menu; GLO lit = power saving on; REC blinks on USB traffic and PLAY
+on Bluetooth traffic unless you gave them a MIDI job; a key or button lights while it
+is held and sending.
+
+The main menu's bottom line shows the USB state, the Bluetooth state, "ECO" when
+power saving is on, and the battery voltage.
+
+## Pages
+
+### Connections
+
+![Connections page](ui-examples/20-connections.png)
+
+One screen with the four ports, their state and counters, a star where something
+moved since the last refresh, and the six routes with their switches and a note of
+any option set on them: "ch" for a channel filter, "map" for a remap, "noclk" when
+clock is blocked. The bottom line shows the global filters and the dropped count.
+This is the page to look at when "nothing arrives": it tells you which link is up
+and which route is off.
+
+### Routing
+
+![Routing page](ui-examples/03-routing.png)
+Six switches: TRS in to BLE out, TRS in to USB out, USB in to BLE out, BLE in to
+USB out, Keys to USB out, Keys to BLE out. Below them, "Options ..." opens the
+options of one route, and "Inputs" the input transforms. Counters per port show
+messages in and out.
+
+**Route options**
+
+![Route options page](ui-examples/15-route-options.png)
+- *Channels*: all, or one channel only. (The web editor can choose any set.)
+- *Remap channel*: keep, or force every channel message onto one channel.
+- *Clock / transport*: pass or block clock, start, continue and stop. Clock over
+  Bluetooth is jittery; blocking it on the BLE route and keeping it on USB is common.
+- *SysEx*: pass or block. Large patch dumps are safer over USB.
+
+**Inputs**
+
+![Inputs page](ui-examples/16-inputs.png)
+- *TRS transpose*: shifts incoming notes by semitones (-24 to +24).
+- *TRS velocity curve*: linear, soft, hard or fixed; *fixed velocity* sets the value.
+
+### MIDI log
+
+![MIDI log page](ui-examples/04-midi-log.png)
+![MIDI log page, decoded](ui-examples/21-midi-log-decoded.png)
+
+The last sixteen messages from any port, newest at the bottom. OCT+ switches
+between raw bytes and decoded text: "1 NoteOn C4 100" is channel 1, note on, middle
+C, velocity 100; "1 CC7 volume 127" names the controller; a line starting with ">"
+is something the Composer sent out. SysEx shows its size, and a Universal Device
+Inquiry or its reply is recognised, the reply with the manufacturer's name. OCT-
+leaves.
+
+### Composer
+
+![Composer page](ui-examples/19-composer.png)
+
+Builds one message and sends it, for trying things by hand. Pick the *Kind*: note,
+control change, program change, pitch bend, channel or poly aftertouch, clock,
+start, continue, stop, a Universal Device Inquiry, or three raw bytes. Set the
+channel and the data with KNOB1; the Send row shows the decoded result before you
+send it. *To* chooses USB, Bluetooth or both; the message bypasses routes and
+filters. A note is released automatically a quarter second later. Four favourites
+can hold messages you use often; "store here" saves the current one, and the
+favourite's row sends it. The sent messages appear in the log with a ">" mark, and
+whatever the other end answers appears after them, so the inquiry is a quick way to
+ask a connected synth or app who it is.
+
+### Statistics
+
+![Statistics page](ui-examples/22-statistics.png)
+
+Counts since the last reset by kind of message, the note and velocity range seen,
+the tempo estimated from incoming clock, and a strip showing which channels have
+carried anything. Point a device at the FM-1, play for a minute, and this page tells
+you what it actually sends. OCT+ resets the counts.
+
+### Recorder
+
+![Recorder page](ui-examples/23-recorder.png)
+
+Records what arrives on the inputs, up to 2048 events with their timing, and plays
+it back to USB, Bluetooth or both, once or looped. The REC and PLAY buttons toggle
+recording and playback on this page when they have no MIDI job. Use it to send the
+same phrase to two apps and compare, or as a scratch looper. SysEx is not recorded.
+
+### MIDI reference
+
+![MIDI reference page](ui-examples/24-reference.png)
+
+A pocket reference: the status bytes and their data, running status, the common
+controller numbers, note numbers, the device inquiry exchange and the transports
+this device uses. SELECT scrolls.
+
+### Clock master
+
+![Clock master page](ui-examples/25-clock-master.png)
+
+The FM-1 sends MIDI clock at a set tempo, 20 to 300 bpm, to USB, Bluetooth or both,
+with Start when it runs and Stop when it stops. PLAY toggles it on this page. Timing
+comes from the bridge's main loop, so expect a jitter of a couple of milliseconds;
+good enough to drive an arpeggiator or a drum app, not a reference clock.
+
+### Keyboard
+
+![Keyboard page](ui-examples/14-keyboard.png)
+- *Keys send MIDI*: the 27 keys play notes (F3 to G5 at octave 0). Off silences them;
+  keys and buttons with a MIDI job keep working.
+- *Channel*, *Octave* (-3 to +3; on this page OCT- and OCT+ shift it), *Velocity*.
+- *Velocity source*: fixed, or the MASTER pot, which then sets the velocity of every
+  note, 1 to 127 across its travel.
+- *Program* and *Bank*: the PRESETS encoder sends program changes, ALGORITHM sends
+  the bank select MSB.
+- KNOB1 to KNOB4 send control changes 1, 74, 71 and 7 while this page is open.
+  Elsewhere KNOB1 belongs to the menu.
+- SAVE leaves this page, since OCT- is taken.
+
+### Button MIDI
+
+![Button MIDI page](ui-examples/17-button-midi.png)
+FX, SCL, ENV, LFO, EDIT, SEQ, ARP, PLAY and REC can each send nothing, a note, a
+control change (127 when pressed, 0 when released) or a program change, on the
+keyboard channel. OCT+ cycles the kind, KNOB1 sets the number. PLAY starts out as
+CC 64, which many sheet-music apps accept as a page turn.
+
+The *Key* row does the same for any of the 27 keys: turn PRESETS, or simply press a
+key, to pick it. A key with a job no longer plays its note.
+
+### Bluetooth
+
+![Bluetooth page](ui-examples/05-bluetooth.png)
+
+![Bluetooth page in host mode](ui-examples/06-bluetooth-host.png)
+
+![Scan devices page](ui-examples/07-scan.png)
+- *State*: advertising, connected, or the host mode state.
+- *Pairable*: whether the FM-1 advertises. Off hides it from phones.
+- *Link*: *low latency* asks for a 7.5 ms connection (Android) or 15 ms (Apple),
+  *power saving* asks for 30 to 50 ms and lets the FM-1 skip events when idle. Power
+  saving does not delay what the FM-1 sends, only what it receives. Hold GLO anywhere
+  to switch.
+- *Disconnect*, *Forget bonds* (the number shows how many devices are paired).
+- *Host mode*: the FM-1 becomes the host and connects to a Bluetooth MIDI keyboard.
+  While it is on, phones cannot connect. *Scan devices* lists MIDI devices in range
+  with their signal; OCT+ connects to the highlighted one. *Pair on connect* asks the
+  keyboard to pair, which some require before they send anything. *Auto reconnect*
+  remembers the last keyboard and connects to it again at power-on and after a
+  drop; Disconnect switches that off until you connect by hand again.
+
+### USB
+
+![USB page](ui-examples/08-usb.png)
+Cable present, whether the computer has enumerated the device, the *USB MIDI* switch
+(off: the cable only charges) and the counters.
+
+### MIDI filters
+
+![MIDI filters page](ui-examples/09-filters.png)
+Drop clock, drop active sensing, drop SysEx, for every route at once. *Panic* sends
+all sound off, all notes off and a note off for every note on every channel to USB
+and Bluetooth. *Panic on link loss*: when USB or Bluetooth drops, the outputs still
+connected get all notes off, so nothing stays stuck. *Note collision guard*: when two
+sources send the same note to one output, a note held by one is not cut off by the
+other's release, and a repeated note on retriggers cleanly instead of stacking.
+
+### Display
+
+![Display page](ui-examples/10-display.png)
+Backlight off after never, 10 s, 30 s, 1 min or 5 min; any input wakes it. Invert
+colours.
+
+### System
+
+![System page](ui-examples/11-system.png)
+
+![Presets page](ui-examples/18-presets.png)
+
+![Input test page](ui-examples/13-input-test.png)
+
+![Confirmation dialog](ui-examples/12-confirm.png)
+Firmware identity, version and build date, battery voltage at the pin (not calibrated),
+uptime, counters per port, input event drops, the boot count, why the chip last
+reset (power on, software, watchdog, ...) and how many watchdog resets and bridge
+stalls it has seen. If "Crashes" ever climbs, that is the first thing to report.
+*Reboot*. *USB recovery mode* restarts
+into the chip's USB download mode, for M-VAVE's updater or a recovery tool. *Reset
+settings*. *Presets*: four slots; "save here" stores everything as it is, "load"
+applies a slot, "clear" empties it. *Input test* shows what the key scanner sees.
+
+## Web editor
+
+The screenshots above are renderings of the panel at twice its size; the real panel is 240 by 240 pixels.
+Open `web/editor.html` from a local web server in Chrome or Edge, connect the FM-1 by
+USB, click Connect. Every setting above is on one page, including channel sets, all
+27 key jobs and the presets, and the page shows every MIDI message the FM-1 sends.
+It also exports and imports the settings as a file, and installs a firmware package
+over USB, the same way the command-line installer does. See `docs/web-editor.md`.
+
+## Updating and going back
+Updates install over USB MIDI with the installer in `tools/install.sh`, the same way
+M-VAVE's updater works. To return to the original firmware, run M-VAVE's updater
+with the official package; the bridge answers its handshake like the stock firmware
+does. Keep the official package on your computer.
+
+If the device ever stops answering, the System page's *USB recovery mode* or, if
+the screen is dead, a USB recovery dongle, brings the chip into its download mode.
+
+## Settings
+Settings are stored a second after a change and survive power cycles. Resetting
+them, or loading a preset, applies at once. The Bluetooth pairing memory is kept
+outside presets.
+
+## Limits
+- The 3.5 mm jack is an input only; the FM-1 cannot drive a hardware synth from it.
+- Bluetooth host mode and the normal mode do not run at the same time.
+- Keys have no velocity sensing; the keyboard sends the velocity set on its page.
+- Latency: USB a few milliseconds, Bluetooth about 10 to 25 ms depending on the
+  connection interval the other side grants.
