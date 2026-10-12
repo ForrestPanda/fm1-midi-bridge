@@ -23,7 +23,9 @@
 #pragma once
 #include <stdint.h>
 
-#define UPD_IDENTITY        "FM-1_9B1"          /* must equal the package identity (tools/package.sh) */
+#ifndef UPD_IDENTITY
+#define UPD_IDENTITY        "FM-1_9B1"          /* must equal the package identity (tools/package.sh); the minimal build says FM-1_9B0 */
+#endif
 #define UPD_OTA_AREA        0x000E0000u         /* staged loader: 5 x 4 KiB sectors */
 #define UPD_OTA_AREA_LEN    0x5000u
 #define UPD_OTA_RES         (UPD_OTA_AREA + UPD_OTA_AREA_LEN - 0x100u)   /* record copy the SPL scans */

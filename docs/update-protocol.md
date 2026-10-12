@@ -67,3 +67,6 @@ and keep the dongle route as the fallback for a firmware that never enumerates.
 
 M-VAVE's own updater (M-UPGRADE) restores the official firmware as long as step 1
 works in whatever is running. Keep the stock `FM-1.fwsc` (v15, 2026-07-30) on disk.
+When step 1 does not work, `docs/recovery.md`: the soft key and the vendor request
+(`tools/fm1_recover.py`) reach the mask ROM from a running firmware, the dongle from
+a dead one, and `tools/fm1_flash.sh` writes a full dump back from there.

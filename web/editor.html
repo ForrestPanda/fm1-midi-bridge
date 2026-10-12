@@ -90,6 +90,10 @@
     <div id="fwlog" class="dim" style="font: 12px ui-monospace, monospace; white-space: pre-wrap; max-height: 120px; overflow: auto"></div>
   </div>
   <div class="card"><h2>Device</h2><table id="devinfo"></table></div>
+  <div class="card"><h2>Device log</h2>
+    <label><span class="dim">Boot messages, update steps, BLE events, task stack margins.</span> <span><button id="logread" disabled>Read</button><button id="logfollow" disabled>Follow</button><button id="logsave" disabled>Save</button></span></label>
+    <div id="devlog" class="dim" style="font: 12px ui-monospace, monospace; white-space: pre-wrap; max-height: 220px; overflow: auto"></div>
+  </div>
   <div class="card"><h2>Send MIDI</h2>
     <label>Bytes (hex) <input type="text" id="tx" value="90 3C 64" style="width:160px;background:#222;color:#eee;border:1px solid #333;border-radius:3px;padding:2px 4px"></label>
     <label>To <select id="txport"><option value="1">USB</option><option value="2">BLE</option><option value="3">USB + BLE</option></select></label>
@@ -169,6 +173,7 @@ async function connect() {
     status('connected to ' + midiIn.name);
     $('read').disabled = $('write').disabled = $('refresh').disabled = $('txsend').disabled = $('export').disabled = false;
     $('fwinstall').disabled = !fwImage;
+    $('logread').disabled = $('logfollow').disabled = $('logsave').disabled = false;
     await readInfo(); await readSettings(); await readStatus(); await readPresets();
   } catch (e) { status('MIDI error: ' + e.message); }
 }
@@ -194,6 +199,35 @@ async function readStatus() {
   let rows = PORTS.map((p, i) => `<tr><td>${p} in/out</td><td>${u32(i*4)} / ${u32(16+i*4)}</td></tr>`).join('');
   rows += `<tr><td>Dropped</td><td>${u32(32)}</td></tr><tr><td>USB</td><td>${b[36] ? 'enumerated' : '--'}</td></tr><tr><td>BLE</td><td>${['advertising','connected','host'][b[38]]}${b[37] ? ' (ready)' : ''}</td></tr>`;
   $('devinfo').innerHTML += rows;
+  try {
+    const si = unpack7(await send(0x0B)); const v = i => si[i] | si[i+1]<<8 | si[i+2]<<16 | si[i+3]<<24;
+    const reason = r => r & 1 ? 'watchdog' : r & 2 ? 'software' : r & 4 ? 'power on' : 'other (' + r.toString(16) + ')';
+    $('devinfo').innerHTML += `<tr><td>Uptime</td><td>${Math.floor(v(0)/1000)} s${si[36] ? ' (minimal build)' : ''}</td></tr>` +
+      `<tr><td>Free heap</td><td>${v(4)} bytes</td></tr><tr><td>Stack margin</td><td>bridge ${v(8)} words, ui ${v(12)} words</td></tr>` +
+      `<tr><td>Boots</td><td>${v(16)}, last reset: ${reason(v(32))}</td></tr><tr><td>Resets</td><td>watchdog ${v(20)}, software ${v(24)}, bridge stalls ${v(28)}</td></tr>`;
+  } catch (e) { /* older firmware without 0x0B */ }
+}
+
+// ---- device log (command 0x0A: absolute offsets, the device keeps the last 4 KB)
+let logFrom = 0, logText = '', logTimer = null;
+async function readLog(all) {
+  if (all) { logFrom = 0; logText = ''; }
+  for (let guard = 0; guard < 64; guard++) {
+    const b = unpack7(await send(0x0A, [logFrom & 0x7F, (logFrom >> 7) & 0x7F, (logFrom >> 14) & 0x7F, (logFrom >> 21) & 0x7F]));
+    const total = b[0] | b[1]<<8 | b[2]<<16 | b[3]<<24, from = b[4] | b[5]<<8 | b[6]<<16 | b[7]<<24, bytes = b.slice(8);
+    if (from > logFrom && logText) logText += `[... ${from - logFrom} bytes lost ...]\n`;
+    logText += String.fromCharCode(...bytes); logFrom = from + bytes.length;
+    $('devlog').textContent = logText; $('devlog').scrollTop = $('devlog').scrollHeight;
+    if (logFrom >= total || bytes.length === 0) break;
+  }
+}
+function followLog() {
+  if (logTimer) { clearInterval(logTimer); logTimer = null; $('logfollow').textContent = 'Follow'; return; }
+  $('logfollow').textContent = 'Stop'; logTimer = setInterval(() => readLog(false).catch(() => {}), 1000);
+}
+function saveLog() {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([logText], { type: 'text/plain' }));
+  a.download = 'fm1-log-' + new Date().toISOString().replace(/[:.]/g, '-') + '.txt'; a.click();
 }
 
 // ---- blob <-> form
@@ -377,6 +411,7 @@ async function fwInstall() {
   finally { fwHandler = null; $('fwinstall').disabled = !fwImage; }
 }
 $('fwinstall').onclick = fwInstall;
+$('logread').onclick = () => readLog(true).catch(e => status(e.message)); $('logfollow').onclick = followLog; $('logsave').onclick = saveLog;
 $('txsend').onclick = sendMidi;
 document.querySelectorAll('[data-tx]').forEach(a => a.onclick = ev => { ev.preventDefault(); $('tx').value = a.dataset.tx; sendMidi(); });
 $('connect').onclick = connect; $('read').onclick = () => readSettings().catch(e => status(e.message));

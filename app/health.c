@@ -6,6 +6,7 @@
 #include "syscfg_id.h"
 #include "health.h"
 #include "util/crc16.h"
+#include "fm1_log.h"
 
 #define LOG_TAG_CONST       APP
 #define LOG_TAG             "[HEALTH]"
@@ -39,6 +40,8 @@ void health_init(void)
     if (reason & SYS_RST_SOFT) h.soft_resets++;
     store();
     log_info("boot %u, reset reason %s (%x)", (unsigned)h.boots, health_reason_text(h.last_reason), (unsigned)reason);
+    fm1_log("boot %u, reset reason %s (%x), wdt %u soft %u hangs %u", (unsigned)h.boots, health_reason_text(h.last_reason),
+            (unsigned)reason, (unsigned)h.wdt_resets, (unsigned)h.soft_resets, (unsigned)h.hangs);
 }
 
 const fm1_health *health_get(void) { return &h; }
@@ -66,6 +69,7 @@ void health_check(void)
     stale_ms += 1000;
     if (stale_ms >= 5000) {
         log_error("bridge loop stalled: restarting");
+        fm1_log("bridge loop stalled for 5 s: restarting");
         h.hangs++;
         store();
         cpu_reset();

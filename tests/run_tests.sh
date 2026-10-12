@@ -17,5 +17,5 @@ ${CC:-cc} -std=c99 -Wall -Wextra -Wpedantic -Werror -O1 -g -o ../build/test_matr
 ${CC:-cc} -std=c99 -Wall -Wextra -Wpedantic -Werror -O1 -g -o ../build/test_adv_parse test_adv_parse.c ../app/bt_ble/adv_parse.c
 ../build/test_adv_parse
 ${CC:-cc} -std=c99 -Wall -Wextra -Wpedantic -Werror -O1 -g -I../app -DFM1_FW_VERSION='"test"' -o ../build/test_editor \
-    test_editor.c ../app/editor.c ../app/settings.c ../app/midi/router.c ../app/util/crc16.c ../app/util/pack7.c
+    test_editor.c ../app/editor.c ../app/settings.c ../app/midi/router.c ../app/util/crc16.c ../app/util/pack7.c ../app/util/logring.c
 ../build/test_editor

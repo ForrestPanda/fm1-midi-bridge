@@ -21,7 +21,13 @@ SYS_LIB_DIR := $(TOOL_DIR)/../lib/r3
 SYS_INC_DIR := $(TOOL_DIR)/../include
 EXT_CFLAGS  := -D__SHELL__
 export PATH:=$(TOOL_DIR):$(PATH)
+MINIMAL  ?= 0
+ifeq ($(MINIMAL), 1)
+OUT_DIR   := $(abspath $(PROJ)/..)/build/minimal
+EXT_CFLAGS += -DFM1_MINIMAL=1 -DUPD_IDENTITY='"FM-1_9B0"'
+else
 OUT_DIR   := $(abspath $(PROJ)/..)/build
+endif
 OUT_ELF   := $(OUT_DIR)/fm1bridge.elf
 OBJ_FILE  := $(OUT_ELF).objs.txt
 BUILD_DIR := $(OUT_DIR)/objs
@@ -219,9 +225,11 @@ c_SRC_FILES := \
 	$(PROJ)/editor.c \
 	$(PROJ)/health.c \
 	$(PROJ)/editor_port.c \
+	$(PROJ)/fm1_log.c \
+	$(PROJ)/util/logring.c \
+	$(PROJ)/usb/descriptor.c \
 	$(SDK)/apps/common/usb/usb_config.c \
 	$(SDK)/apps/common/usb/usb_epbuf_manager.c \
-	$(SDK)/apps/common/usb/device/descriptor.c \
 	$(SDK)/apps/common/usb/device/task_pc.c \
 	$(SDK)/apps/common/usb/device/user_setup.c \
 	$(SDK)/apps/common/usb/device/msd_upgrade.c \
@@ -235,6 +243,11 @@ c_SRC_FILES := \
 	$(SDK)/cpu/wl82/port_waked_up.c \
 	$(SDK)/cpu/wl82/setup.c \
 
+
+ifeq ($(MINIMAL), 1)
+c_SRC_FILES := $(filter-out $(PROJ)/ui/ui.c $(PROJ)/ui/ui_menu.c $(PROJ)/ui/ui_pages.c $(PROJ)/input/matrix.c $(PROJ)/input/matrix_port.c $(PROJ)/midi/keys.c, $(c_SRC_FILES))
+c_SRC_FILES += $(PROJ)/minimal.c
+endif
 
 # 需要编译的 .S 文件
 S_SRC_FILES := \

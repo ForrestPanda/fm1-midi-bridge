@@ -152,6 +152,15 @@
   Web editor: settings export/import as JSON, firmware install with the installer
   protocol (unverified on hardware).
 - `app.bin` see the footprint in README.
+- 2026-10-12, hardware readiness: the device log (`app/fm1_log.c`, 4 KB ring, the
+  SDK `log_putbyte` hook, editor commands 0x0A/0x0B, web editor Device log card and
+  sysinfo rows: heap, task stack margins, health counters); the minimal build
+  (`make MINIMAL=1`, `app/minimal.c`, identity FM-1_9B0, `tools/package.sh --minimal`);
+  fuzz harnesses under ASan/UBSan for every parser the bridge task runs
+  (`tests/fuzz`, 400k iterations each clean, update entry at 96% line coverage);
+  `tools/fm1_recover.py` (soft key, SDK vendor request, wait for UBOOT),
+  `tools/fm1_flash.sh` (jl-uboot-tool dump/verify/restore), `docs/recovery.md`;
+  USB strings M-VAVE / FM-1 (`app/usb/descriptor.c`). Tagged v0.1.0.
 
 ### Verify on hardware (UI)
 - Splash then main menu; SELECT scrolls; OCT+/OCT- navigate; HOME returns to the menu.
@@ -170,6 +179,13 @@
   server->client role switch at runtime, the `user_client_report_*` hook names, the
   `adv_report_t` packet offset, keyboards that insist on pairing ("Pair on connect").
 - PC8 reclaimed as D/C after the SPI driver opened port C; panel init at 12 MHz.
+- The SDK log hook: does the vendor library call `log_putbyte()` per byte, so SDK
+  printf output lands in the device log? Our own `fm1_log()` lines do regardless.
+- Stack margins in the Device card after an hour of traffic (bridge and UI tasks).
+- USB strings: does M-UPGRADE still find the device as "FM-1"? Stock VID/PID.
+- `tools/fm1_recover.py`: the soft key on stock and on ours, the vendor request on
+  ours; the UBOOT disk's SCSI vendor/model strings; jl-uboot-tool on WL82 (listed
+  as untested there) and the loader it needs.
 
 ## First-boot checklist (when an FM-1 is here)
 
@@ -177,14 +193,24 @@ No stock round trip is needed between our own installs: our package carries
 Felucca's loader, which writes the app area (including the region descriptors) and
 never the head. Stock v15 is the recovery path, not a prerequisite.
 
+0. Build the D+/D- dongle (ip2k's `dongle/`), clone jl-uboot-tool, and take a full
+   1 MB dump of the untouched unit: `tools/fm1_recover.py`, `tools/fm1_flash.sh dump`.
+   The dump is the only backup of the unit's own data (BT address, BTIF). If the soft
+   key does not get stock into UBOOT mode, the dongle does. Read `docs/recovery.md`.
 1. `tools/install.sh --info` on stock: note the identity and that the handshake works.
+   Note the USB VID/PID and product string of stock (`lsusb -v`) for `app/usb/descriptor.c`.
 2. Back up: keep the stock `FM-1.fwsc`; confirm M-UPGRADE can reinstall it once.
-3. Install `fm1bridge.fwsc`. Expected: the installer's step 1 is served by our app
-   (17 read requests), the loader appears as `ota-FM-1_015`, step 2 writes.
-4. On boot: does it enumerate on USB as a MIDI device? Does the BLE name appear?
-   Does `tools/install.sh --info` get our identity `FM-1_9B1`?
-5. Install again (proves our step 1 on hardware), then install stock back.
-6. Only then: TRS keyboard -> BLE/USB, USB <-> BLE, soft key, debug pin PC3.
+3. Install `fm1bridge-minimal.fwsc` first (identity FM-1_9B0: no radio, no keys, no UI
+   task). Expected: the installer's step 1 is served by our app (17 read requests),
+   the loader appears as `ota-FM-1_015`, step 2 writes.
+4. On boot: the status screen; USB enumerates as "FM-1" MIDI; `tools/install.sh --info`
+   gets `FM-1_9B0`; the web editor connects, the Device log card shows the boot lines
+   (and whether SDK printf output reaches the ring through `log_putbyte`), the Device
+   card shows heap and stack margins; a TRS keyboard counts on the screen.
+5. Install the minimal build again (proves our step 1 on hardware), then install
+   stock back, then the full `fm1bridge.fwsc` (identity FM-1_9B1).
+6. Only then: TRS keyboard -> BLE/USB, USB <-> BLE, soft key (`tools/fm1_recover.py
+   --softkey`, then the vendor request), debug pin PC3.
    The logger screen shows every message as it passes, so a keyboard on TRS should
    print "TRS 90 3C 64" lines without any host attached. If the panel stays dark:
    check that the SDK SPI driver left PC8 usable as the D/C output (we reclaim it

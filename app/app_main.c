@@ -6,6 +6,7 @@
 #include "event/key_event.h"
 #include "event/bt_event.h"
 #include "event/device_event.h"
+#include "fm1_log.h"
 
 /*中断列表 */
 const struct irq_info irq_info_table[] = {
@@ -101,15 +102,24 @@ void app_default_event_handler(struct sys_event *event)
 void app_main()
 {
     puts("------------- fm1-midi-bridge app main-------------\n");
-
-    extern void bt_ble_module_init(void);
-    bt_ble_module_init();
+    fm1_log("fm1-midi-bridge %s%s, built %s %s", FM1_FW_VERSION, FM1_MINIMAL ? " MINIMAL" : "", __DATE__, __TIME__);
 
     extern void health_init(void);
     health_init();
 
     extern void settings_init(void);
     settings_init();
+
+#if FM1_MINIMAL
+    /* first-install build: USB MIDI, TRS in, the updater and the editor; no radio,
+     * no key matrix, no UI task. Proves the install path with the least that can hang. */
+    extern void bridge_init(void);
+    bridge_init();
+    extern void minimal_init(void);
+    minimal_init();
+#else
+    extern void bt_ble_module_init(void);
+    bt_ble_module_init();
 
     extern void bridge_init(void);
     bridge_init();
@@ -119,5 +129,7 @@ void app_main()
 
     extern void ui_init(void);
     ui_init();
+#endif
+    fm1_log("app_main done");
 }
 

@@ -14,6 +14,7 @@
 #include "midi/usbmidi.h"
 #include "usb/usb_midi.h"
 #include "bridge.h"
+#include "fm1_log.h"
 
 #define LOG_TAG_CONST       APP
 #define LOG_TAG             "[UPDATE]"
@@ -79,11 +80,13 @@ int upd_port_flash_read(uint32_t off, void *p, uint32_t n) { return norflash_ori
 void upd_port_show(uint32_t step, int32_t code)
 {
     log_info("update step %u code %d", step, code);
+    fm1_log("update step %u code %d", (unsigned)step, (int)code);
 }
 
 void upd_port_commit(const uint8_t *parm)
 {
     log_info("update: record written, resetting into the loader");
+    fm1_log("update: record written, resetting into the loader");
     os_time_dly(3);
     local_irq_disable();
     memcpy(UPDATA_FLAG_ADDR, parm, UPD_PARM_LEN);
@@ -95,6 +98,7 @@ void upd_port_uboot(void)
 {
     extern void go_mask_usb_updata(void);
     log_info("soft key: mask-ROM USB update mode");
+    fm1_log("soft key: resetting into mask-ROM USB update mode");
     os_time_dly(3);
     go_mask_usb_updata();
 }

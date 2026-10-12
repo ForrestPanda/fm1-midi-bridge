@@ -85,6 +85,13 @@
 //                                   USB (fm1-midi-bridge)                          //
 //*********************************************************************************//
 #define FM1_FW_VERSION                      "0.1.0"
+#ifndef FM1_MINIMAL
+#define FM1_MINIMAL                         0       /* 1 (make MINIMAL=1): first-install build, see app/minimal.c */
+#endif
+#ifndef FM1_MINIMAL_LCD
+#define FM1_MINIMAL_LCD                     1       /* the minimal build still draws a status screen */
+#endif
+#define CONFIG_USER_DEBUG_ENABLE                    /* SDK log sink hook log_putbyte() is ours: app/fm1_log.c */
 #define FM1_BLE_HOST_EN                     1       /* BLE host (central) mode, exclusive with peripheral */
 #define TCFG_PC_ENABLE                      1       /* USB device ("PC") mode */
 #define USB_PC_NO_APP_MODE                  2       /* start/stop USB directly on plug events, no app task */

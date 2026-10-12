@@ -5,6 +5,7 @@
 #include "../app/midi/router.h"
 #include "../app/update/fm1_update.h"
 #include "../app/util/pack7.h"
+#include "../app/util/logring.h"
 #include <stdio.h>
 #include <string.h>
 #include <stddef.h>
@@ -18,6 +19,9 @@ void editor_port_apply(void) { applied++; }
 void editor_port_status(editor_status *st) { st->count_in[0] = 7; st->usb_ok = 1; }
 static int sent_port; static uint8_t sent[16]; static uint32_t sent_n;
 void editor_port_send_midi(int port, const uint8_t *bytes, uint32_t n) { sent_port = port; memcpy(sent, bytes, n); sent_n = n; }
+static logring ring;
+const struct logring *editor_port_log(void) { return &ring; }
+void editor_port_sysinfo(editor_sysinfo *si) { si->uptime_ms = 1234; si->boots = 5; si->minimal = 1; }
 static uint8_t blob[256]; static int blob_len; static uint8_t pblob[4][256]; static int pblob_len[4];
 int settings_port_read(uint16_t id, void *buf, uint16_t len) { uint8_t *b = id == FM1_SETTINGS_ID ? blob : pblob[id - 11]; int *bl = id == FM1_SETTINGS_ID ? &blob_len : &pblob_len[id - 11]; if (!*bl) return -1; if (len > *bl) len = (uint16_t)*bl; memcpy(buf, b, len); return len; }
 int settings_port_write(uint16_t id, const void *buf, uint16_t len) { uint8_t *b = id == FM1_SETTINGS_ID ? blob : pblob[id - 11]; int *bl = id == FM1_SETTINGS_ID ? &blob_len : &pblob_len[id - 11]; memcpy(b, buf, len); *bl = len; return len; }
@@ -83,6 +87,38 @@ int main(void)
       n = frame(f, 0x09, pl, 1 + k, 0); editor_handle(f, n);
       CHECK(last[5] == 0x49 && last[6] == 0 && sent_port == 3 && sent_n == 3 && sent[0] == 0x90 && sent[2] == 100);
       pl[0] = 7; n = frame(f, 0x09, pl, 1 + k, 0); editor_handle(f, n); CHECK(last[6] == 1); }
+    /* log ring: offsets are absolute, the oldest bytes fall out, reads clamp */
+    { uint8_t o[16]; uint32_t from, k, i; char line[8];
+      logring_init(&ring);
+      CHECK(logring_total(&ring) == 0 && logring_start(&ring) == 0);
+      from = 0; CHECK(logring_read(&ring, &from, o, sizeof o) == 0);
+      logring_write(&ring, "hello\n", 6);
+      from = 0; k = logring_read(&ring, &from, o, sizeof o); CHECK(k == 6 && from == 0 && memcmp(o, "hello\n", 6) == 0);
+      from = 4; k = logring_read(&ring, &from, o, sizeof o); CHECK(k == 2 && o[0] == 'o');
+      from = 99; k = logring_read(&ring, &from, o, sizeof o); CHECK(k == 0 && from == 6);
+      for (i = 0; i < LOGRING_SIZE; i++) { line[0] = (char)('a' + i % 26); logring_write(&ring, line, 1); }
+      CHECK(logring_total(&ring) == LOGRING_SIZE + 6 && logring_start(&ring) == 6);
+      from = 0; k = logring_read(&ring, &from, o, 3); CHECK(k == 3 && from == 6 && o[0] == 'a' && o[1] == 'b');
+      from = LOGRING_SIZE + 4; k = logring_read(&ring, &from, o, 16); CHECK(k == 2 && o[0] == (uint8_t)('a' + (LOGRING_SIZE - 2) % 26)); }
+    /* 0x0A: log from an offset; reply carries total, from, bytes */
+    { uint8_t pl[4] = { 8, 0, 0, 0 }; uint32_t t, fr;
+      n = frame(f, 0x0A, pl, 4, 0); editor_handle(f, n);
+      CHECK(last[5] == 0x4A);
+      d = unpack7(last + 6, last_n - 7, dec, sizeof dec);
+      t = dec[0] | dec[1] << 8 | dec[2] << 16 | (uint32_t)dec[3] << 24; fr = dec[4] | dec[5] << 8 | dec[6] << 16 | (uint32_t)dec[7] << 24;
+      CHECK(t == LOGRING_SIZE + 6 && fr == 8 && d == 8 + EDITOR_LOG_CHUNK && dec[8] == 'c');
+      pl[0] = 0x7F; pl[1] = 0x7F; pl[2] = 0x7F; pl[3] = 0x7F;                 /* far past the end: nothing, from = total */
+      n = frame(f, 0x0A, pl, 4, 0); editor_handle(f, n);
+      d = unpack7(last + 6, last_n - 7, dec, sizeof dec);
+      fr = dec[4] | dec[5] << 8 | dec[6] << 16 | (uint32_t)dec[7] << 24; CHECK(d == 8 && fr == LOGRING_SIZE + 6);
+      n = frame(f, 0x0A, NULL, 0, 0); editor_handle(f, n);                      /* no offset: from the oldest held */
+      d = unpack7(last + 6, last_n - 7, dec, sizeof dec);
+      fr = dec[4] | dec[5] << 8 | dec[6] << 16 | (uint32_t)dec[7] << 24; CHECK(fr == 6 && dec[8] == 'a'); }
+    /* 0x0B: sysinfo */
+    n = frame(f, 0x0B, NULL, 0, 0); editor_handle(f, n);
+    CHECK(last[5] == 0x4B);
+    d = unpack7(last + 6, last_n - 7, dec, sizeof dec);
+    CHECK(d == sizeof(editor_sysinfo) && dec[0] == (1234 & 0xFF) && dec[offsetof(editor_sysinfo, boots)] == 5 && dec[offsetof(editor_sysinfo, minimal)] == 1);
     /* not ours */
     { uint8_t other[] = {0xF0, 0x7E, 0x7F, 0x09, 0x01, 0xF7}; CHECK(!editor_is_frame(other, sizeof other)); }
     if (fails) { printf("%d failure(s)\n", fails); return 1; }

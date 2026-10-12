@@ -3,6 +3,7 @@
 #include "settings.h"
 #include "update/fm1_update.h"     /* UPD_IDENTITY */
 #include "util/pack7.h"
+#include "util/logring.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -98,6 +99,27 @@ int editor_handle(const uint8_t *wire, uint32_t n)
             if (len && len <= sizeof bytes && port >= 1 && port <= 3) { editor_port_send_midi(port, bytes, len); status = 0; }
         }
         reply(0x49, &status, 1, 0);
+        return 1;
+    }
+    case 0x0A: {
+        uint8_t out[8 + EDITOR_LOG_CHUNK];
+        uint32_t from = 0, got, total;
+        const logring *lr = editor_port_log();
+        if (n >= EDITOR_PREFIX_LEN + 6)
+            from = (uint32_t)(wire[EDITOR_PREFIX_LEN + 1] & 0x7F) | (uint32_t)(wire[EDITOR_PREFIX_LEN + 2] & 0x7F) << 7 |
+                   (uint32_t)(wire[EDITOR_PREFIX_LEN + 3] & 0x7F) << 14 | (uint32_t)(wire[EDITOR_PREFIX_LEN + 4] & 0x7F) << 21;
+        got = logring_read(lr, &from, out + 8, EDITOR_LOG_CHUNK);
+        total = logring_total(lr);
+        out[0] = (uint8_t)total; out[1] = (uint8_t)(total >> 8); out[2] = (uint8_t)(total >> 16); out[3] = (uint8_t)(total >> 24);
+        out[4] = (uint8_t)from;  out[5] = (uint8_t)(from >> 8);  out[6] = (uint8_t)(from >> 16);  out[7] = (uint8_t)(from >> 24);
+        reply(0x4A, out, 8 + got, 1);
+        return 1;
+    }
+    case 0x0B: {
+        editor_sysinfo si;
+        memset(&si, 0, sizeof si);
+        editor_port_sysinfo(&si);
+        reply(0x4B, (const uint8_t *)&si, sizeof si, 1);
         return 1;
     }
     default:

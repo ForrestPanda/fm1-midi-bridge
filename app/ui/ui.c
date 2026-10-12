@@ -13,6 +13,7 @@
 #include "asm/gpio.h"
 #include "bt_ble/ble_host.h"
 #include "health.h"
+#include "fm1_log.h"
 
 #define LOG_TAG_CONST       APP
 #define LOG_TAG             "[UI]"
@@ -220,7 +221,7 @@ static void ui_task(void *p)
     mx_state *mx = matrix_state();
     mx_event e;
     (void)p;
-    lcd_init();
+    fm1_log("lcd init %s", lcd_init() == 0 ? "ok" : "FAILED");
     lcd_invert(settings_get()->invert);
     keys_init(&keys, settings_get()->kbd_channel, settings_get()->kbd_octave, settings_get()->kbd_velocity);
     gpio_set_die(IO_PORTB_06, 0); gpio_set_direction(IO_PORTB_06, 1); gpio_set_pull_up(IO_PORTB_06, 0); gpio_set_pull_down(IO_PORTB_06, 0);
@@ -243,7 +244,7 @@ static void ui_task(void *p)
 #if FM1_BLE_HOST_EN
             ble_host_tick();
 #endif
-            { static u8 hk; if (++hk >= 10) { hk = 0; health_check(); } }
+            { static u8 hk; if (++hk >= 10) { hk = 0; health_check(); fm1_log_stack_note(FM1_TASK_UI); } }
             if (settings_get()->kbd_vel_source == 1) {           /* MASTER pot: 0..3300 mV -> 1..127 */
                 u32 mv = adc_get_voltage(AD_CH_PB06);
                 u32 v = mv * 127u / 3300u;

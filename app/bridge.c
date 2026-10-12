@@ -29,6 +29,7 @@
 #include "health.h"
 #include "settings.h"
 #include "midi/panic.h"
+#include "fm1_log.h"
 
 #define LOG_TAG_CONST       APP
 #define LOG_TAG             "[BRIDGE]"
@@ -386,9 +387,11 @@ static void bridge_task(void *p)
 {
     (void)p;
     midilog_init();
+    u32 beats = 0;
     for (;;) {
         int busy = 0;
         health_bridge_alive();
+        if ((++beats & 0x3FF) == 0) fm1_log_stack_note(FM1_TASK_BRIDGE);
         busy |= drain_trs();
         busy |= drain_usb();
         busy |= drain_ble();
@@ -411,6 +414,7 @@ static void uart_init_trs(void)
     uart_dev = dev_open("uart1", NULL);
     if (!uart_dev) {
         log_error("uart1 (TRS MIDI IN) open failed");
+        fm1_log("uart1 (TRS MIDI IN) open failed");
         return;
     }
     dev_ioctl(uart_dev, UART_SET_CIRCULAR_BUFF_ADDR, (u32)uart_ring);
@@ -449,4 +453,5 @@ void bridge_init(void)
     fm1_update_boot_cleanup();
     os_task_create(bridge_task, NULL, 10, 1024, 0, "midi_bridge");
     log_info("bridge up: routes 0x%x", router.routes);
+    fm1_log("bridge up: routes 0x%x, uart1 %s", router.routes, uart_dev ? "open" : "FAILED");
 }

@@ -26,12 +26,26 @@ arrives from the device, which makes it a second MIDI monitor.
 | 0x05 presets | 0x45 | one byte per slot, 1 = used |
 | 0x06 / 0x07 / 0x08 + slot | 0x46 / 0x47 / 0x48 | save / load / clear preset slot 0..3; one status byte |
 | 0x09 + port + pack7(bytes) | 0x49 | send raw MIDI bytes to port 1 = USB, 2 = BLE, 3 = both, bypassing routes |
+| 0x0A + from (4 x 7 bits, LSB first; optional) | 0x4A | pack7(u32 total, u32 from, bytes): the device log from absolute offset `from`, at most 200 bytes; `total` is the count ever written, `from` the offset actually served (clamped to the 4 KB the device still holds). Repeat with `from + bytes` until `from` reaches `total` |
+| 0x0B sysinfo | 0x4B | pack7(`editor_sysinfo`): uptime ms, free heap, bridge and UI task stack margins (words never used), boots, watchdog resets, software resets, bridge stalls, last reset reason, minimal-build flag |
 
 pack7 is the same 8-to-7, LSB-first packing the M-VAVE update protocol uses. The
 settings blob is `fm1_settings` from `app/settings.h` byte for byte; the page carries the
 offsets of the current version and `tests/test_editor.c` asserts them, so a layout
 change fails the host tests until both are updated. The device keeps its own
 `host_peer` field (the last BLE host-mode device) and recomputes the CRC on write.
+
+## Device log
+
+The FM-1 has no debug pads, so the firmware keeps its log in a 4 KB RAM ring
+(`app/fm1_log.c`) and the Device log card reads it over the same SysEx link: boot
+and reset reason, update steps, BLE connections, task stack margins, and whatever
+the SDK prints through its log hook. *Read* fetches everything held, *Follow* polls
+once a second, *Save* downloads the text. The log survives nothing: a reset empties
+it, but the health counters (Device card) do survive, and the first lines after a
+boot say why it happened. Whether the vendor library routes its own printf output
+through the hook the firmware provides is to be verified on hardware; the firmware's
+own lines do not depend on it.
 
 ## Backup and firmware
 

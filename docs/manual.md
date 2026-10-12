@@ -239,7 +239,10 @@ Open `web/editor.html` from a local web server in Chrome or Edge, connect the FM
 USB, click Connect. Every setting above is on one page, including channel sets, all
 27 key jobs and the presets, and the page shows every MIDI message the FM-1 sends.
 It also exports and imports the settings as a file, and installs a firmware package
-over USB, the same way the command-line installer does. See `docs/web-editor.md`.
+over USB, the same way the command-line installer does. The Device card shows uptime,
+free memory, task stack margins and the reset history, and the Device log card reads
+the firmware's own log (boot, reset reason, update steps, Bluetooth connections), the
+only console the FM-1 has. See `docs/web-editor.md`.
 
 ## Updating and going back
 Updates install over USB MIDI with the installer in `tools/install.sh`, the same way
@@ -247,8 +250,14 @@ M-VAVE's updater works. To return to the original firmware, run M-VAVE's updater
 with the official package; the bridge answers its handshake like the stock firmware
 does. Keep the official package on your computer.
 
-If the device ever stops answering, the System page's *USB recovery mode* or, if
-the screen is dead, a USB recovery dongle, brings the chip into its download mode.
+The first firmware to put on a new unit is the minimal build (`FM-1_9B0`): the
+same updater and USB MIDI, a status screen, nothing else. It proves the install path
+both ways before the full bridge goes on.
+
+If the device ever stops answering, the System page's *USB recovery mode*, the
+`tools/fm1_recover.py` script or, if the screen is dead, a USB recovery dongle,
+brings the chip into its download mode, where `tools/fm1_flash.sh` restores a flash
+dump. `docs/recovery.md` has the whole ladder and what to prepare beforehand.
 
 ## Settings
 Settings are stored a second after a change and survive power cycles. Resetting

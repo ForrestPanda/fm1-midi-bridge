@@ -27,6 +27,7 @@
 #include "system/includes.h"
 
 #include "app_config.h"
+#include "fm1_log.h"
 
 #include "btstack/btstack_task.h"
 #include "btstack/bluetooth.h"
@@ -513,6 +514,9 @@ static void cbk_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
                 }
                 con_handle = hci_subevent_le_enhanced_connection_complete_get_connection_handle(packet);
                 log_info("HCI_SUBEVENT_LE_ENHANCED_CONNECTION_COMPLETE : %0x\n", con_handle);
+                fm1_log("ble: connected (enhanced) handle %x interval %d latency %d", con_handle,
+                        hci_subevent_le_enhanced_connection_complete_get_conn_interval(packet),
+                        hci_subevent_le_enhanced_connection_complete_get_conn_latency(packet));
                 log_info("conn_interval = %d\n", hci_subevent_le_enhanced_connection_complete_get_conn_interval(packet));
                 log_info("conn_latency = %d\n", hci_subevent_le_enhanced_connection_complete_get_conn_latency(packet));
                 log_info("conn_timeout = %d\n", hci_subevent_le_enhanced_connection_complete_get_supervision_timeout(packet));
@@ -522,6 +526,7 @@ static void cbk_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
             case HCI_SUBEVENT_LE_CONNECTION_COMPLETE:
                 con_handle = hci_subevent_le_connection_complete_get_connection_handle(packet);
                 log_info("HCI_SUBEVENT_LE_CONNECTION_COMPLETE: %0x\n", con_handle);
+                fm1_log("ble: connected handle %x", con_handle);
                 connection_update_complete_success(packet + 8);
                 server_profile_start(con_handle);
 #if RCSP_BTMATE_EN
@@ -552,6 +557,7 @@ static void cbk_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
 
         case HCI_EVENT_DISCONNECTION_COMPLETE:
             log_info("HCI_EVENT_DISCONNECTION_COMPLETE: %0x\n", packet[5]);
+            fm1_log("ble: disconnected, reason %x", packet[5]);
 #if RCSP_BTMATE_EN
             rcsp_exit();
 #endif

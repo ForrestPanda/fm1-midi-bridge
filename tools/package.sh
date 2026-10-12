@@ -8,17 +8,20 @@
 #                           program the SPL runs; its source is in the Felucca checkout
 #
 #   tools/package.sh [IDENTITY]       default identity FM-1_9B1 (FM-1_9xx: custom firmware)
+#   tools/package.sh --minimal        build/minimal/app.bin -> build/fm1bridge-minimal.fwsc, identity FM-1_9B0
 #
 # Env: FELUCCA (default ../../Felucca), AC79_SDK (default ~/fw-AC79_AIoT_SDK)
 set -e
 here=$(cd "$(dirname "$0")/.." && pwd)
 FELUCCA=${FELUCCA:-$here/../../Felucca}
 export AC79_SDK=${AC79_SDK:-$HOME/fw-AC79_AIoT_SDK}
-ident=${1:-FM-1_9B1}
-app=$here/build/app.bin
+if [ "$1" = "--minimal" ]; then
+    shift; ident=${1:-FM-1_9B0}; app=$here/build/minimal/app.bin; out=$here/build/fm1bridge-minimal.fwsc; hint="make -C app MINIMAL=1"
+else
+    ident=${1:-FM-1_9B1}; app=$here/build/app.bin; out=$here/build/fm1bridge.fwsc; hint="make -C app"
+fi
 ldr=$FELUCCA/build/loader/ota.bin
-out=$here/build/fm1bridge.fwsc
-[ -f "$app" ] || { echo "package.sh: $app missing: make -C app first"; exit 1; }
+[ -f "$app" ] || { echo "package.sh: $app missing: $hint first"; exit 1; }
 [ -f "$ldr" ] || { echo "package.sh: $ldr missing: build Felucca once (./build.sh in $FELUCCA) for its loader"; exit 1; }
 python3 "$here/tools/fm1pkg_make.py" "$app" "$ldr" "$out" --product "$ident"   # our fork: VM entry ends at 0xE0000
 ls -l "$out"
