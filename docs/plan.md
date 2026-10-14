@@ -89,9 +89,11 @@
 
 ## UI (milestone 6, built 2026-10-11, untested on hardware)
 
-- `app/input/`: own matrix scanner. TIMER3 at 10 kHz, one column per tick, rows read
-  the tick after latching; debounce 8 frames; encoders with a continuously learned
-  rest state; 32-event queue; button LEDs. `tests/test_matrix.c`.
+- `app/input/`: own matrix scanner. TIMER3 at 10 kHz (`-DMX_TICK_US` overrides), one
+  column per tick, rows read the tick after latching, 1.1 ms frames; debounce 8 frames;
+  encoders with a continuously learned rest state, clockwise = B closes first
+  (Felucca's hardware-tested sign, fm1-emu's too; the first cut had it the other way
+  round); 32-event queue; button LEDs. `tests/test_matrix.c`.
 - `app/ui/`: UI task (prio 8) owns the panel; row cache; generic menu renderer; pages:
   splash, main (status footer with battery mV), Routing, MIDI log, Bluetooth (pairable,
   disconnect, forget bonds, host mode, scan, pair on connect), USB (cable, enumerated,
@@ -161,11 +163,28 @@
   `tools/fm1_recover.py` (soft key, SDK vendor request, wait for UBOOT),
   `tools/fm1_flash.sh` (jl-uboot-tool dump/verify/restore), `docs/recovery.md`;
   USB strings M-VAVE / FM-1 (`app/usb/descriptor.c`). Tagged v0.1.0.
+- 2026-10-12, the bridge task under test: `tests/host/` stands in for the SDK headers
+  and ports (RAM rings with the library's all-or-nothing contract, read from its
+  bitcode), `bridge_step()` is the loop body; `tests/test_bridge.c` covers the three
+  inputs, routes and filters, the SysEx hand-over to the updater and the editor, the
+  inject ring, panic, link-drop panic, the clock master, the recorder, the collision
+  guard, a full USB ring and a failed UART; `tests/fuzz/fuzz_bridge.c` scripts the
+  same simulator from mutated input. Found and fixed: an over-long SysEx with one of
+  our prefixes used to leak its tail chunks to the router. `tests/test_update.c` now
+  runs full -> minimal -> full against both device identities. `tests/fuzz/soak.sh`
+  for long runs with a fresh seed; the driver saves a crashing input for replay.
 
 ### Verify on hardware (UI)
-- Splash then main menu; SELECT scrolls; OCT+/OCT- navigate; HOME returns to the menu.
+- Splash then main menu; SELECT scrolls, clockwise = down (if it is up, the encoder
+  sign in `matrix.c` `qtab` is the other way round on real parts); OCT+/OCT- navigate;
+  HOME returns to the menu.
 - The 10 kHz TIMER3 ISR does not disturb TRS MIDI, USB or BLE (log page still shows a
   TRS keyboard while scrolling menus). If TIMER3 is taken, use TIMER2 (`matrix_port.c`).
+- TRS MIDI IN through `app/trs_uart.c` (register level, Felucca's set-up): a keyboard on
+  the jack logs on the MIDI log page and reaches USB/BLE within a few ms with the FM-1's
+  own keys idle; with nothing on the jack, no UART interrupts (Statistics page).
+- The FM-1's own keys reach USB/BLE with nothing plugged into TRS (the bridge loop used
+  to wait for TRS bytes; it now sleeps on a semaphore every producer posts).
 - Matrix tables (`app/input/matrix.c`): System > Input test shows every closed cell as
   (column,row), the decoded button, the encoder counts and learned rest states. Press
   every button and turn every encoder; fix the tables for any mismatch (batches differ).
@@ -210,7 +229,7 @@ never the head. Stock v15 is the recovery path, not a prerequisite.
 5. Install the minimal build again (proves our step 1 on hardware), then install
    stock back, then the full `fm1bridge.fwsc` (identity FM-1_9B1).
 6. Only then: TRS keyboard -> BLE/USB, USB <-> BLE, soft key (`tools/fm1_recover.py
-   --softkey`, then the vendor request), debug pin PC3.
+   --softkey`, then the vendor request). PC3 stays undriven; the SysEx log is the console.
    The logger screen shows every message as it passes, so a keyboard on TRS should
    print "TRS 90 3C 64" lines without any host attached. If the panel stays dark:
    check that the SDK SPI driver left PC8 usable as the D/C output (we reclaim it
@@ -218,18 +237,84 @@ never the head. Stock v15 is the recovery path, not a prerequisite.
 
 ## Still open
 
-- USB descriptor still says JieLi VID 0x3654 and the SDK product string.
-
-- Whether `update.a` accepts a Felucca-style `.fwsc` in step 1 (it looks for
-  `flash.bin` and `ota.bin` inside a UFW and checks chip name, uboot and key): test on
-  hardware, or write our own step 1 (the protocol is small).
-- Step 1 of the update inside our app (handshake identity, upgrade command, 0x30
-  reads, staging the loader, `UPDATA_PARM`): vendor `update.a` over a SysEx transport
-  shim, or our own ~300 lines. Must exist before the first install.
-- Stock VID/PID and product string; our descriptor currently says JieLi 0x3654.
-- The pin-level board file for the FM-1 (LCD, keys, LEDs, codec) in SDK terms.
-- Debug output: the demo prints on UART2 TX = PC3. Unknown what PC3 is on the FM-1;
-  switch to USB CDC or confirm the pin is free before the first boot.
+- Stock USB VID/PID: `app/usb/descriptor.c` says M-VAVE / FM-1 but keeps JieLi's
+  0x3654 VID and the SDK PID until read from a real unit (`lsusb -v` on stock).
+- Whether the hardware-side details of the board file are right: the LCD SPI pins,
+  the key matrix tables (may differ by batch), the codec lines, PB1 never driven.
+- Debug UART: the SDK demo prints on UART2 TX = PC3. Every open FM-1 firmware
+  leaves PC3 alone (Felucca drives PC0/1/2/6 for the codec and PC7..PC10 for the
+  panel; nothing documents PC3, PC4, PC5) and there is no schematic, so "free" cannot
+  be shown from the trees. The board file keeps `tx_pin = -1`; the device log over
+  SysEx is the console. Only worth revisiting if a boot never reaches USB.
+- Whether `log_putbyte` receives the vendor libraries' printf output (hardware).
+- jl-uboot-tool on the WL82 family (listed untested upstream), the soft key and the
+  SDK vendor request on stock: `docs/recovery.md`.
+- **fm1-emu runs this firmware (2026-10-14)**, full and minimal builds, with the BLE
+  stack on (`BLE:adv`): splash, menu, encoder, keys, TRS in, routing to USB and BLE.
+  It took nine fixes to the emulator, on branch `ac79-sdk-firmware` of `../fm1-emu`
+  (four commits on top of upstream master, not pushed; its author
+  tuned it on Felucca-family firmwares and M-VAVE's; the AC79 SDK uses instruction
+  forms and a lock encoding those never emit):
+  - ISA: `sp = R` read the wrong register (`sp = r5` loaded r3); `{pc, regs} = [sp++]`
+    with a register mask no corpus used; `R = rets/psr/cnum/...` and `sreg = R` for
+    registers r8-r15; the 4-byte post-increment-by-register loads and stores
+    (`h[rB++=rI] = R`, `de ec/ed/ee`), which two immediate-form classes also matched
+    and ran as something else; dual-issue `clz #` and `clz` of r4-r7; the 4-byte
+    `[R+-#i] = R` (`d7 ec`, a frame store the routing screen's `prvListTasksWithinSingleList`
+    hits), whose offset the slot solver had given up on: same pieces as its load twin.
+  - The hardware lock: `lockset`/`lockclr` (`41 00`/`40 00`, the SDK kernel's spelling)
+    were no-ops; only the `lockset R` forms the stock firmware uses took the lock. With
+    the two cores running the SDK's scheduler unlocked, a task that blocked on one core
+    was re-assigned to it by the other and queued on a wait list twice (the log mutex);
+    the boot stalled at ~250 ms in `vListInsert`, differently with every build.
+  - TIMER0..3 with clock source 0 count lsb_clk (192 MHz), not the 24 MHz crystal:
+    the matrix scan ran 8x slow.
+  - `work/lcd.bmp` is rewritten only with `FM1_LCD_DUMP=1` (a long run rewrote it
+    thousands of times); `FM1_TRACE_MEM=hex,hex` adds RAM words and `sp` to the trace.
+  - Speed: it ran at 0.08x real time (the stock firmware 1.15x). cpu1 runs in slices
+    between cpu0's, and the emulator ended a slice early whenever cpu1 came back to the
+    same pc with the same registers ("a polling loop with nothing to do"). The SDK's
+    idle loop (`idle`, then `wdt_clear` through the p33 byte lock) is such a loop, so
+    cpu1 was always parked inside the p33 critical section while cpu0 ran, and cpu0
+    spent 70% of its instructions spinning on `testset` in `p33_lock` (interpreted,
+    never reaching `idle`, so no time was skipped). cpu1's slice now ends at its own
+    `idle` instruction, the one place in that loop where it holds nothing: 0.93x real
+    time, 92% of cycles skipped as idle. (`fm1-live --bench 3000` measures it;
+    `FM1_BENCH_PCS=1` now samples cpu1's pc as well.)
+  Stock, Felucca, SLOOP and baudgirl: byte-identical audio and stats before and after.
+  How to run: `fm1-emu --fwsc build/fm1bridge.fwsc --ms 4700 --keys
+  "2400:SELECT:+2,2700:OCTUP,3000-3200:n12,4000:midi:903c64" --snap 3800` (frames in
+  `work/lcd_<ms>.bmp`); the device log is the `ring.N.0` symbol (`nm`, its `total` is
+  `ring.N.1`: LTO splits the struct), `--dump` it. The batch tool has no idle skipping
+  and runs this firmware at about a minute per emulated second; `fm1-live --fwsc ...
+  --shot MS` with `FM1_BENCH_KEYS` (same key ids, `ms:id`, `ms:id^`, `ms:eN:clicks`,
+  `ms:mHEX`) runs at 0.9x, reports a halt the same way and leaves the panel in
+  `work/panel.ppm`; `FM1_DUMPRAM=file` writes the RAM for the log ring.
+  - **Every UI page walked (2026-10-14)** with `tools/ui_walk.py`: one key script per
+    main-menu page plus the sub-pages (route options, inputs, the confirm dialog, host
+    scan, presets, input test), encoders, knobs, note keys, mapped buttons, GLO held,
+    MIDI into the jack, the confirm dialogs answered both ways, a settings reset. 37
+    runs, no halt: no decode gap left on the paths the UI reaches (the halt names the
+    class and the pc; the image-wide instruction check cannot replace this, it loses
+    alignment on this image). Rerun it after UI changes; its pictures
+    (`build/ui_walk/walk.png`) show whether each script still lands where it should.
+    Found by the pictures: the SDK's printf does not know the `+` flag, `%+d` printed a
+    bare `d` (transpose, octave, input test, bend in the log); fixed, signs spelt out.
+  - The `xTaskSwitchContext = 0` line seen in the device log (every 50 ms, 2026-10-14
+    morning): it is `vPortYield` in the closed `cpu/wl82/liba/system.a` (port.c.o),
+    `if (xTaskSwitchContext() == 0) puts("xTaskSwitchContext = 0\n")`, unconditional, no
+    build option, printed when a yield finds no task to switch to (callers: the tick ISR,
+    vTaskDelay, the queue and semaphore operations). Not reproducible since: the log ring
+    and a breakpoint on that `puts` call stay empty with the committed firmware
+    (fd0945c), with its predecessor (1784864, the SDK uart device still in), with the
+    minimal build, in fm1-live and in the batch tool, with the plan's own key session,
+    and in the emulator as it was before its slice fix (b7fa98a). Most likely a transient
+    state of that morning's loop (an uncommitted variant of the bridge wait). If it shows
+    up on hardware: `--break-pc` on the `call puts` inside `vPortYield` (`nm`, then
+    `objdump -d`) with `FM1_BREAK_PCS=<vPortYield>` names the caller through `rets`;
+    silencing it would be a filter in `log_putbyte` (saves the log space, not the mutex)
+    or a post-link patch of that call; neither is in.
+  - The stock VID/PID and the 0x13e00 block are still unmodelled (harmless).
 
 ## Questions to answer on the SDK tree (original list)
 

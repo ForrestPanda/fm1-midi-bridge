@@ -126,14 +126,16 @@ static const uint8_t HS_QUERY[] = {0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x4
 static const uint8_t UPGRADE[] = {0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7};
 static const uint8_t SOFTKEY[] = {0xF0, 0x22, 0x24, 0x35, 0x7D, 0xF7};
 
-int main(int argc, char **argv)
+/* one whole session against one package: handshake, soft key, a refused session, a
+ * real one, the boot cleanup. Returns 0 when the package is missing (skipped). */
+static int run_package(const char *pkg)
 {
     uint32_t lo, ll, i;
-    const char *pkg = argc > 1 ? argv[1] : "../build/fm1bridge.fwsc";
     if (load_package(pkg)) { printf("no package %s: skipping (build and package first)\n", pkg); return 0; }
     CHECK(find_loader(&lo, &ll) == 0);
     printf("package %s: image %zu bytes, loader body at %#x, %u bytes\n", pkg, image_len, lo, ll);
     memset(flash, 0xFF, sizeof flash);
+    committed = 0; ubooted = 0; requests = 0; refuse_success = 0; pending_len = 0; identity[0] = 0;
 
     /* handshake */
     host_queue(HS_QUERY, sizeof HS_QUERY);
@@ -171,8 +173,22 @@ int main(int argc, char **argv)
     /* boot cleanup erases the leftovers */
     fm1_update_boot_cleanup();
     for (i = 0; i < UPD_OTA_AREA_LEN; i++) if (flash[UPD_OTA_AREA + i] != 0xFF) { CHECK(!"cleanup did not erase"); break; }
+    free(image); image = NULL; image_len = 0;
+    return 1;
+}
 
+/* Every package named on the command line, in order, against this one device identity
+ * (UPD_IDENTITY, set per build by tests/run_tests.sh: the full build's and the minimal
+ * build's). Full -> minimal -> full on a real unit is the same sequence, with a reboot
+ * between steps that only hardware can show. */
+int main(int argc, char **argv)
+{
+    static const char *defaults[] = { "../build/fm1bridge.fwsc", "../build/fm1bridge-minimal.fwsc", "../build/fm1bridge.fwsc" };
+    int i, ran = 0;
+    printf("device identity %s\n", UPD_IDENTITY);
+    if (argc > 1) for (i = 1; i < argc; i++) ran += run_package(argv[i]);
+    else for (i = 0; i < 3; i++) ran += run_package(defaults[i]);
     if (fails) { printf("%d failure(s)\n", fails); return 1; }
-    printf("update tests passed\n");
+    printf("update tests passed (%d session%s)\n", ran, ran == 1 ? "" : "s");
     return 0;
 }

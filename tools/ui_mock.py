@@ -145,6 +145,11 @@ s = Screen(); s.inv(0, " Input test        HOME:leave"); s.row(1, " cells: 7,1 0
 for i, (n, v, r) in enumerate([("SELECT", 12, "00"), ("ALGO", 0, "00"), ("KNOB1", -3, "11"), ("KNOB2", 0, "00"), ("KNOB3", 0, "00"), ("KNOB4", 0, "00"), ("PRESETS", 1, "00")]):
     s.row(4 + i, " %-8s %+5d   rest %s" % (n, v, r))
 s.row(12, " last: SELECT +1", DIM); s.row(13, " frames 41203  drops 0", DIM); shots.append(s.save('13-input-test.png'))
+# 26 minimal build status screen (app/minimal.c, make MINIMAL=1): no menu, all lines white
+s = Screen(); s.row(0, " FM-1 MIDI bridge  MINIMAL"); s.row(1, " version 0.1.0"); s.row(2, " Oct 12 2026")
+s.row(4, " Install build: USB MIDI,"); s.row(5, " TRS in, updater, editor."); s.row(6, " No Bluetooth, no keys.")
+s.row(8, " USB: ready"); s.row(9, " TRS in 1532  USB in 12"); s.row(10, " USB out 1544")
+s.row(12, " boot 3  power on"); s.row(13, " wdt 0 hangs 0"); s.row(14, " up 418 s"); shots.append(s.save('26-minimal.png'))
 # contact sheet
 cols = 4; rows = (len(shots) + cols - 1) // cols; pad = 10; sw = W * scale
 sheet = Image.new('RGB', (cols * (sw + pad) + pad, rows * (sw + pad) + pad), (40, 40, 40))

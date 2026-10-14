@@ -103,6 +103,17 @@ and optional SDRAM; the FM-1 has 1 MB and 512 KB RAM, so `__FLASH_SIZE__` must b
 pin. Felucca uses UART1 with PH8 through input channel 1; the SDK driver should do the
 same remap by itself.
 
+Not used by the bridge since 2026-10-14 (`app/trs_uart.c` drives UART1 directly, Felucca's
+way). What the device did in fm1-emu: `dev_read` with `UART_SET_RECV_BLOCK 1` pends on the
+driver's own semaphore (`_uartx_recv` -> `os_sem_pend`), which only the UART interrupt
+posts, so `UART_SET_RECV_TIMEOUT` does not make it return on a silent line (it is the
+silence *after* bytes that ends a read); with `UART_SET_RECV_BLOCK 0` the read returned
+nothing even with bytes in the ring; and a task parked in that blocking read seemed to
+make the SDK's two-core scheduler stall at boot (that was the emulator: its hardware
+lock ignored the SDK's `lockset`, see `docs/plan.md`). The ioctls, from
+`include_lib/driver/device/uart.h`: RECV_BLOCK,
+RECV_TIMEOUT (ms), RECV_TIMEOUT_CB, GET_RECV_CNT, CIRCULAR_BUFF_ADDR/LENTH, START.
+
 ## Flash layout
 
 `cpu/wl82/tools/isd_config_rule.c` is the packer's rule file (VM, BTIF, USER, LOG

@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+- Runs in fm1-emu (2026-10-14): boots, UI, keys, encoders, TRS in, routing to USB and
+  BLE, the device log readable from RAM. Found there and fixed:
+  - the bridge loop paced itself with a blocking UART read, so keyboard, composer, USB
+    and BLE traffic only moved while TRS bytes arrived; it now sleeps on a semaphore
+    that every producer (USB ISR, BT task, UI, TRS interrupt) posts;
+  - TRS MIDI IN is read at register level (`app/trs_uart.c`, Felucca's UART1 set-up,
+    RX and timeout interrupts) instead of through the SDK's uart device;
+  - the encoders counted clockwise as -1 (`matrix.c` `qtab`, now Felucca's sign).
+  The scan period and the ISR priority can be set on the make line (`MX_TICK_US`,
+  `MX_IRQ_PRIO`). The emulator ran this firmware at 0.08x real time (its cpu1 slice
+  ended inside the SDK's p33 critical section every pass, cpu0 spun on the lock); with
+  cpu1's slice ending at `idle` it runs at 0.93x (`docs/plan.md`, fm1-emu item). The
+  routing screen halted the emulator on a frame store it could not decode; fixed there.
+- Every UI page walked in the emulator with key scripts (`tools/ui_walk.py`, 37 runs
+  through fm1-emu's live tool, pictures in `build/ui_walk/`): no halt, so no decode gap
+  on the paths the UI reaches. Found by the pictures and fixed: the SDK's printf does
+  not know the `+` flag, so transpose, octave, the input test counts and the bend value
+  in the MIDI log showed a bare `d`; the sign is spelt out now.
+- The bridge task runs on the host: `tests/host/` simulator, `bridge_step()`,
+  `tests/test_bridge.c` and `tests/fuzz/fuzz_bridge.c`.
+- Fixed: a SysEx from USB that starts like one of ours (update, soft key, editor) but
+  is longer than any accepted frame no longer leaks its tail chunks to the router.
+- `tests/test_update.c` runs full -> minimal -> full against both device identities.
+- Fuzz driver: `FUZZ_SEED`, crashing inputs saved for replay; `tests/fuzz/soak.sh`.
+- Docs: the open-items list brought up to date; PC3 (SDK console pin) recorded as
+  unused by every open firmware and left undriven; screenshot of the minimal build.
+
 ## v0.1.0 (2026-10-12): first hardware candidate
 
 Everything is built and host-tested; nothing has run on an FM-1 yet.

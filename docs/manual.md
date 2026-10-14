@@ -252,7 +252,11 @@ does. Keep the official package on your computer.
 
 The first firmware to put on a new unit is the minimal build (`FM-1_9B0`): the
 same updater and USB MIDI, a status screen, nothing else. It proves the install path
-both ways before the full bridge goes on.
+both ways before the full bridge goes on. Its screen has no menu and reads no keys:
+the USB state, the TRS and USB counters, the boot count and reset reason, and the
+uptime, refreshed once a second.
+
+![Minimal build status screen](ui-examples/26-minimal.png)
 
 If the device ever stops answering, the System page's *USB recovery mode*, the
 `tools/fm1_recover.py` script or, if the screen is dead, a USB recovery dongle,

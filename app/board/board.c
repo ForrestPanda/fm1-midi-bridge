@@ -16,8 +16,9 @@ UART2_PLATFORM_DATA_BEGIN(uart2_data)
 	.baudrate = 1000000,
 	.port = PORT_REMAP,
 	.output_channel = OUTPUT_CHANNEL0,
-	.tx_pin = -1,            /* FM-1: PC3 (the demo's console pin) is undocumented, so nothing is driven.
-	                          * Set IO_PORTC_03 only after confirming the pin is free; logs are off until then. */
+	.tx_pin = -1,            /* FM-1: PC3 (the demo's console pin) is undocumented: no open firmware touches
+	                          * PC3/PC4/PC5 and there is no schematic, so nothing is driven. The console is the
+	                          * RAM log read over SysEx (app/fm1_log.c). Set IO_PORTC_03 only with the pin traced. */
 	.rx_pin = -1,
 	.max_continue_recv_cnt = 1024,
 	.idle_sys_clk_cnt = 500000,

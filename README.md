@@ -39,8 +39,9 @@ sh tools/package.sh --minimal  # build/fm1bridge-minimal.fwsc
 ```
 
 Before and after anything goes on hardware, read `docs/recovery.md`. The parsers
-that run in the bridge task are fuzzed under ASan/UBSan with
-`sh tests/fuzz/run_fuzz.sh` (about a minute). `tools/fm1_recover.py` puts a
+that run in the bridge task, and the bridge task itself on a host simulator, are
+fuzzed under ASan/UBSan with `sh tests/fuzz/run_fuzz.sh` (a couple of minutes;
+`sh tests/fuzz/soak.sh` for a long run with a fresh seed). `tools/fm1_recover.py` puts a
 device that still enumerates into the mask-ROM download mode; `tools/fm1_flash.sh`
 dumps and restores the whole flash from there through jl-uboot-tool.
 
@@ -73,6 +74,7 @@ for the FM-1 pin map and the update protocol. No Felucca code is copied.
 | `tools/fm1_recover.py`, `tools/fm1_flash.sh` | soft key / vendor request into the mask-ROM download mode; whole-flash dump and restore through jl-uboot-tool |
 | `tools/mkfont.py` | renders DejaVu Sans Mono into `app/ui/font.h` (8x14, 1 bpp) |
 | `tools/gatt_midi.py` | generates `app/bt_ble/midi_profile.h`, the ATT database of the BLE MIDI service |
+| `tools/ui_walk.py` | walks every UI page in fm1-emu's live tool with key scripts; a decode gap shows as a halt, pictures in `build/ui_walk/` |
 | `app/bridge.c` | the bridge task: ports -> parser/decoders -> router -> encoders |
 | `app/fm1_log.c`, `app/util/logring.c` | the device log: 4 KB RAM ring, the SDK log hook, read over SysEx by the web editor (MIT) |
 | `app/minimal.c` | the first-install build's status task (`make MINIMAL=1`) |
@@ -83,8 +85,9 @@ for the FM-1 pin map and the update protocol. No Felucca code is copied.
 | `web/editor.html` | settings editor in the browser over USB-MIDI SysEx (Web MIDI); see `docs/web-editor.md` |
 | `docs/ui-examples/` | example screenshots of every page (`tools/ui_mock.py`) |
 | `app/update/` | update step 1 over USB-MIDI SysEx (portable core + SDK port), soft key to recovery (MIT) |
-| `tests/` | host tests: MIDI codecs, router filters, panic, update session, settings, matrix decoder, advertising parser, editor and log ring (`sh tests/run_tests.sh`) |
-| `tests/fuzz/` | ASan/UBSan fuzz harnesses for the MIDI decoders, pack7, the editor and the update entry (`sh tests/fuzz/run_fuzz.sh`) |
+| `tests/` | host tests: MIDI codecs, router filters, panic, update sessions (both identities, full -> minimal -> full), settings, matrix decoder, advertising parser, editor and log ring, the bridge task (`sh tests/run_tests.sh`) |
+| `tests/host/` | the bridge task's host simulator: SDK header stand-ins and RAM ports, shared by `tests/test_bridge.c` and the bridge fuzz harness |
+| `tests/fuzz/` | ASan/UBSan fuzz harnesses for the MIDI decoders, pack7, the editor, the update entry and the whole bridge task (`sh tests/fuzz/run_fuzz.sh`; `soak.sh` for long runs, e.g. from cron) |
 | `build/` | build output (ignored) |
 
 ## UI

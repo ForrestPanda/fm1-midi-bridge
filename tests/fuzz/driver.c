@@ -2,7 +2,10 @@
 /* Stand-alone driver for the fuzz harnesses when libFuzzer is not available:
  * mutates the harness's seeds and random inputs under ASan/UBSan for a number of
  * iterations. Same entry point as libFuzzer, so the harnesses work with both.
- *   ./fuzz_x [iterations] [corpus_dir]   (default 200000; corpus files are extra seeds) */
+ *   ./fuzz_x [iterations] [corpus_dir]   (default 200000; corpus files are extra seeds)
+ * FUZZ_SEED=<number> in the environment picks the random sequence (the default is
+ * fixed, so a run is reproducible); when a sanitizer aborts, the input that did it is
+ * written to <corpus_dir>/crash-<seed>-<iteration>.bin, which the next run replays. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,6 +20,17 @@ static uint64_t rng = 0x9E3779B97F4A7C15ull;
 static uint32_t rnd(void) { rng ^= rng << 13; rng ^= rng >> 7; rng ^= rng << 17; return (uint32_t)(rng >> 11); }
 
 static uint8_t *seeds[256]; static size_t seed_len[256]; static int nseeds;
+static const uint8_t *cur; static size_t cur_len; static long cur_it; static const char *corpus; static unsigned long seed_no;
+
+extern void __sanitizer_set_death_callback(void (*cb)(void)) __attribute__((weak));
+static void on_death(void)
+{
+    char path[1100]; FILE *f;
+    if (!corpus || !cur) return;
+    snprintf(path, sizeof path, "%s/crash-%lu-%ld.bin", corpus, seed_no, cur_it);
+    f = fopen(path, "wb");
+    if (f) { fwrite(cur, 1, cur_len, f); fclose(f); fprintf(stderr, "crashing input saved to %s\n", path); }
+}
 
 static void add_seed(const uint8_t *p, size_t n)
 {
@@ -70,15 +84,19 @@ int main(int argc, char **argv)
     long iters = argc > 1 ? atol(argv[1]) : 200000, it;
     static uint8_t buf[MAX_IN + 64];
     const uint8_t *s; size_t n; int i;
+    const char *env = getenv("FUZZ_SEED");
+    if (env && *env) { seed_no = strtoul(env, NULL, 0); rng ^= (uint64_t)seed_no * 0x2545F4914F6CDD1Dull; if (!rng) rng = 1; }
     for (i = 0; (s = fuzz_seed(i, &n)) != NULL; i++) add_seed(s, n);
-    if (argc > 2) load_dir(argv[2]);
-    for (i = 0; i < nseeds; i++) LLVMFuzzerTestOneInput(seeds[i], seed_len[i]);
+    if (argc > 2) { corpus = argv[2]; load_dir(argv[2]); }
+    if (__sanitizer_set_death_callback) __sanitizer_set_death_callback(on_death);
+    for (i = 0; i < nseeds; i++) { cur = seeds[i]; cur_len = seed_len[i]; cur_it = -1 - i; LLVMFuzzerTestOneInput(seeds[i], seed_len[i]); }
     for (it = 0; it < iters; it++) {
         if (nseeds && (rnd() % 4)) { int k = (int)(rnd() % (uint32_t)nseeds); n = seed_len[k]; memcpy(buf, seeds[k], n); }
         else { n = rnd() % 64; for (size_t j = 0; j < n; j++) buf[j] = (uint8_t)rnd(); }
         n = mutate(buf, n);
+        cur = buf; cur_len = n; cur_it = it;
         LLVMFuzzerTestOneInput(buf, n);
     }
-    printf("%s: %ld iterations, %d seeds, no crash\n", argv[0], iters, nseeds);
+    printf("%s: %ld iterations, %d seeds, seed %lu, no crash\n", argv[0], iters, nseeds, seed_no);
     return 0;
 }

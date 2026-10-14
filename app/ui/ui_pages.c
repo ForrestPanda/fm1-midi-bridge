@@ -209,7 +209,10 @@ static const ui_page page_route_opt = { "Route", opt_enter, opt_draw, opt_event,
 /* ------------------------------------------------------------------ inputs (TRS transform) */
 static const char *const vel_names[VEL_CURVE_COUNT] = { "linear", "soft", "hard", "fixed" };
 static void in_store(void) { settings_apply_router(settings_get(), bridge_router()); mark(); }
-static void v_itr(char *b, int n) { snprintf(b, n, "%+d", settings_get()->input[MIDI_PORT_TRS].transpose); }
+/* No "%+d" anywhere on the device: the SDK's printf does not know the '+' flag and
+ * prints a bare "d" (seen in fm1-emu on this very row). The sign is spelt out. */
+static const char *plus(int v) { return v < 0 ? "" : "+"; }
+static void v_itr(char *b, int n) { int t = settings_get()->input[MIDI_PORT_TRS].transpose; snprintf(b, n, "%s%d", plus(t), t); }
 static void a_itr(int d) { int t = settings_get()->input[MIDI_PORT_TRS].transpose + (d > 0 ? 1 : -1); if (t < -24) t = -24; if (t > 24) t = 24; settings_get()->input[MIDI_PORT_TRS].transpose = (s8)t; in_store(); }
 static void v_ivc(char *b, int n) { u8 c = settings_get()->input[MIDI_PORT_TRS].vel_curve; snprintf(b, n, "%s", vel_names[c < VEL_CURVE_COUNT ? c : 0]); }
 static void a_ivc(int d) { int c = settings_get()->input[MIDI_PORT_TRS].vel_curve + (d > 0 ? 1 : VEL_CURVE_COUNT - 1); settings_get()->input[MIDI_PORT_TRS].vel_curve = (u8)(c % VEL_CURVE_COUNT); in_store(); }
@@ -739,7 +742,7 @@ static void v_kbd_en(char *b, int n) { onoff(b, n, settings_get()->kbd_enabled);
 static void a_kbd_en(int d) { (void)d; settings_get()->kbd_enabled = !settings_get()->kbd_enabled; kbd_apply(); }
 static void v_kbd_ch(char *b, int n) { snprintf(b, n, "%d", settings_get()->kbd_channel + 1); }
 static void a_kbd_ch(int d) { settings_get()->kbd_channel = (u8)((settings_get()->kbd_channel + (d > 0 ? 1 : 15)) & 15); kbd_apply(); }
-static void v_kbd_oct(char *b, int n) { int o = settings_get()->kbd_octave; snprintf(b, n, "%+d  (F%d..G%d)", o, 3 + o, 5 + o); }
+static void v_kbd_oct(char *b, int n) { int o = settings_get()->kbd_octave; snprintf(b, n, "%s%d  (F%d..G%d)", plus(o), o, 3 + o, 5 + o); }
 static void a_kbd_oct(int d) { int o = settings_get()->kbd_octave + (d > 0 ? 1 : -1); if (o < -3) o = -3; if (o > 3) o = 3; settings_get()->kbd_octave = (s8)o; kbd_apply(); }
 static void v_kbd_vel(char *b, int n) { if (settings_get()->kbd_vel_source) snprintf(b, n, "pot %d", ui_keys()->velocity); else snprintf(b, n, "%d", settings_get()->kbd_velocity); }
 static void v_kbd_vs(char *b, int n) { snprintf(b, n, "%s", settings_get()->kbd_vel_source ? "MASTER pot" : "fixed"); }
@@ -941,7 +944,7 @@ static void input_draw(void)
     ui_row((u16)row++, l, UI_C_OK, UI_C_BG);
     row++;
     for (c = 0; c < MX_ENC_COUNT; c++) {
-        snprintf(l, sizeof l, " %-8s %+5d   rest %d%d", enc_names[c], enc_count[c], mx->enc[c].rest >> 1, mx->enc[c].rest & 1);
+        snprintf(l, sizeof l, " %-8s %s%d   rest %d%d", enc_names[c], plus(enc_count[c]), enc_count[c], mx->enc[c].rest >> 1, mx->enc[c].rest & 1);
         ui_row((u16)row++, l, UI_C_TXT, UI_C_BG);
     }
     row++;
@@ -956,7 +959,7 @@ static void input_event(const mx_event *e)
     char nm[12];
     if (e->type == MX_EV_ENC) {
         if (e->id < MX_ENC_COUNT) enc_count[e->id] += e->delta;
-        snprintf(last_event, sizeof last_event, "%s %+d", e->id < MX_ENC_COUNT ? enc_names[e->id] : "?", e->delta);
+        snprintf(last_event, sizeof last_event, "%s %s%d", e->id < MX_ENC_COUNT ? enc_names[e->id] : "?", plus(e->delta), e->delta);
     } else {
         btn_name(nm, sizeof nm, e->id);
         snprintf(last_event, sizeof last_event, "%s %s%s", nm,

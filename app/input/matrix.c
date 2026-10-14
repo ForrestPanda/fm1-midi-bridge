@@ -74,8 +74,11 @@ int mx_pop(mx_state *s, mx_event *e)
     return 1;
 }
 
-/* quadrature: index = prev << 2 | cur; +1 clockwise, -1 counter-clockwise, 0 otherwise */
-static int8_t qtab[16] = { 0, -1, 1, 0,  1, 0, 0, -1,  -1, 0, 0, 1,  0, 1, -1, 0 };   /* RAM, not const */
+/* quadrature: index = prev << 2 | cur, state = A << 1 | B; +1 clockwise, -1 counter-
+ * clockwise, 0 otherwise. Clockwise = B closes first (00 -> 01 -> 11 -> 10 -> 00): the
+ * direction Felucca's hardware-tested decoder counts as + and fm1-emu turns for
+ * `SELECT:+1`. Verify on hardware. */
+static int8_t qtab[16] = { 0, 1, -1, 0,  -1, 0, 0, 1,  1, 0, 0, -1,  0, -1, 1, 0 };   /* RAM, not const */
 
 MX_RAM_CODE static int bit(const mx_state *s, mx_pos p) { return (s->raw[p.col] >> p.row) & 1; }
 

@@ -24,13 +24,14 @@ aroum/fm1-custom-fw teardown notes and product reviews. Facts, not code. Items m
 
 | Function | Pins |
 | --- | --- |
-| TRS MIDI IN | **PH8** -> input channel 1 -> UART1 RX, 31250 baud (UART clock PLL48M, BAUD = 48e6/31250/4 - 1 = 383). RX DMA ring, polled. |
-| Key/button/encoder matrix | 11 columns via 2x 74HC595 (PA4 SER, PA3 SRCLK, PA1 RCLK); rows PA0, PA5..PA8, PB7, pull-ups, active low |
+| TRS MIDI IN | **PH8** -> input channel 1 -> UART1 RX, 31250 baud (UART clock PLL48M, BAUD = 48e6/31250/4 - 1 = 383). RX DMA ring, polled (Felucca). The bridge (`app/trs_uart.c`) adds the RX and timeout interrupts: CON0 bit 3 RX IE (RXCNT bytes since the last latch), bit 5 timeout IE (OTCNT UART clocks of silence after a byte), bit 7 latches the count into HRXCNT, bits 10/12 clear the pendings (11/14); IRQ 20. **Interrupts: verify on hardware** (the polled set-up is Felucca's, the IRQ bits are the SDK driver's as fm1-emu models them). |
+| Key/button/encoder matrix | 11 columns via 2x 74HC595 (PA4 SER, PA3 SRCLK, PA1 RCLK); rows PA0, PA5..PA8, PB7, pull-ups, active low. Encoders: clockwise = contact B closes first (Felucca's decoder; fm1-emu turns the same way). |
 | LEDs | PH6, PH9, PA9, PA10 (per column, rows PA7/PA8/PA5/PA6) |
 | LCD | SPI1: PC9 CLK, PC10 DO, PC7 CS, PC8 D/C; backlight PA2 active low |
 | MASTER pot | PB6, SARADC ch4 |
 | Battery divider | PB1, SARADC ch3 |
-| Audio out | ALNK0 I2S to an external codec |
+| Audio out | ALNK0 I2S to an external codec; codec control lines PC0, PC1, PC2, PC6 (Felucca `fm1_audio.h`) |
+| Debug UART | none known. The SDK demos print on UART2 TX = **PC3**; no open firmware uses PC3, PC4 or PC5 and nothing documents them, so our board file leaves the console pin unset (`tx_pin = -1`) and the firmware logs into a RAM ring read over SysEx instead |
 
 Felucca source files to read for each: `fm1_uart.h`, `fm1_input.h`, `fm1_lcd_hw.h`,
 `fm1_adc.h`, `fm1_audio.h`. In the SDK these map to the board header for the

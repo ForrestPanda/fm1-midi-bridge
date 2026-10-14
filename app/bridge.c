@@ -2,7 +2,7 @@
 /* Bridge task: pulls bytes from the three ports, parses them into MIDI messages,
  * fans them out through the router and re-encodes for each destination.
  *
- *   TRS  UART1 RX ring (SDK uart device "uart1")  -> midi_parser  -> router
+ *   TRS  UART1 RX DMA ring at register level (trs_uart.c) -> ISR -> cbuf -> midi_parser -> router
  *   USB  bulk OUT packets (ISR, usb_midi.c)       -> cbuf -> usbmidi_dec -> router
  *   BLE  writes to the MIDI characteristic (BT task) -> cbuf -> blemidi_dec -> router
  *   router -> USB: usbmidi_encode -> usb_midi_write
@@ -12,9 +12,8 @@
 #include "app_config.h"
 #include "os/os_api.h"
 #include "generic/circular_buf.h"
-#include "device/uart.h"
-#include "device/device.h"
 #include "bridge.h"
+#include "trs_uart.h"
 #include "midi/midi_msg.h"
 #include "midi/usbmidi.h"
 #include "midi/blemidi.h"
@@ -47,10 +46,9 @@ static usbmidi_dec usb_dec;
 static blemidi_dec ble_dec;
 static blemidi_enc ble_enc;
 
-static void *uart_dev;
-static u8 uart_ring[UART_RING] __attribute__((aligned(4)));
-static cbuffer_t usb_cbuf, ble_cbuf, inj_cbuf;
-static u8 usb_ring[USB_RING], ble_ring[BLE_RING];
+static u8 trs_on;                       /* UART1 is receiving (trs_uart.c) */
+static cbuffer_t usb_cbuf, ble_cbuf, inj_cbuf, trs_cbuf;
+static u8 usb_ring[USB_RING], ble_ring[BLE_RING], trs_ring[UART_RING];
 static u8 inj_ring[32 * (1 + sizeof(midi_msg))];
 static u8 ble_pending;                  /* something was added to ble_enc since the last flush */
 static midi_panic panic;                /* midi_panic_active() while a panic is being sent */
@@ -228,7 +226,7 @@ static void from_trs(void *ctx, const midi_msg *m) { (void)ctx; router_feed(&rou
  * instead of being routed. Everything else is routed. */
 static u8 upd_acc[UPD_WIRE_MAX];
 static u32 upd_acc_len;
-static u8 upd_capturing;
+static u8 upd_capturing;                /* 1 = collecting, 2 = too long: discarding until the end */
 extern void fm1_update_port_frame(const u8 *p, u32 n);
 
 static void from_usb(void *ctx, const midi_msg *m)
@@ -242,14 +240,14 @@ static void from_usb(void *ctx, const midi_msg *m)
             upd_acc_len = 0;
         }
         if (upd_capturing) {
-            if (upd_acc_len + m->len <= sizeof upd_acc) {
+            if (upd_capturing == 1 && upd_acc_len + m->len <= sizeof upd_acc) {
                 memcpy(upd_acc + upd_acc_len, m->b, m->len);
                 upd_acc_len += m->len;
             } else {
-                upd_capturing = 0;                 /* too long: not ours after all */
+                upd_capturing = 2;                 /* too long for any of ours: swallow the rest, never route a tail */
             }
             if (m->flags & MIDI_SYSEX_END) {
-                if (upd_capturing) {
+                if (upd_capturing == 1) {
                     if (editor_is_frame(upd_acc, upd_acc_len)) editor_handle(upd_acc, upd_acc_len);
                     else fm1_update_port_frame(upd_acc, upd_acc_len);
                 }
@@ -262,11 +260,22 @@ static void from_usb(void *ctx, const midi_msg *m)
 }
 static void from_ble(void *ctx, uint16_t ts, const midi_msg *m) { (void)ctx; (void)ts; router_feed(&router, MIDI_PORT_BLE, m); }
 
+/* The loop sleeps on this when a pass finds nothing to do; whoever queues work posts it:
+ * the USB ISR, the BT task, the UI (keys, knobs, composer) and the TRS UART interrupt.
+ * Before, the loop paced itself with a blocking UART read and a 2 ms "receive
+ * timeout", but the SDK read pends on the driver's semaphore, which only the UART
+ * interrupt posts: with the TRS jack silent nothing else moved (keyboard notes showed up
+ * in fm1-emu only when a TRS byte arrived). Verify on hardware: a note from the keys
+ * must reach USB/BLE with nothing plugged into TRS, within a few ms. */
+static OS_SEM wake;
+static void wake_loop(void) { os_sem_post(&wake); }
+
 /* USB interrupt context: just queue */
 static void usb_rx_isr(void *priv, const u8 *pkts, u32 len)
 {
     (void)priv;
     cbuf_write(&usb_cbuf, (void *)pkts, len);
+    wake_loop();
 }
 
 /* BT stack task: queue one delimited packet */
@@ -279,6 +288,7 @@ static void ble_rx_cb(void *priv, const u8 *pkt, u16 len)
     tmp[1] = (u8)(len >> 8);
     memcpy(tmp + 2, pkt, len);
     cbuf_write(&ble_cbuf, tmp, 2u + len);
+    wake_loop();
 }
 
 int bridge_pump_usb(void);
@@ -318,6 +328,7 @@ void bridge_inject(int port, const midi_msg *m)
     tmp[0] = (u8)port;
     memcpy(tmp + 1, m, sizeof *m);
     cbuf_write(&inj_cbuf, tmp, sizeof tmp);
+    wake_loop();
 }
 
 /* straight to an output port, no routes or filters (the composer); logged as ">PORT" */
@@ -345,13 +356,21 @@ static int drain_inject(void)
     return 1;
 }
 
+/* TRS bytes come from the UART1 interrupt (trs_uart.c), as USB's from its ISR */
+void bridge_trs_rx(const u8 *bytes, u32 n)
+{
+    if (!n) return;
+    cbuf_write(&trs_cbuf, (void *)bytes, n);
+    wake_loop();
+}
+
 static int drain_trs(void)
 {
     u8 buf[64];
-    int n;
-    if (!uart_dev) return 0;
-    n = dev_read(uart_dev, buf, sizeof buf);          /* blocks up to the receive timeout */
-    if (n <= 0) return 0;
+    u32 n = cbuf_get_data_len(&trs_cbuf);
+    if (!n) return 0;
+    if (n > sizeof buf) n = sizeof buf;
+    n = cbuf_read(&trs_cbuf, buf, n);
     midi_parser_feed(&trs_parser, buf, (size_t)n);
     return 1;
 }
@@ -383,45 +402,54 @@ void bridge_stats_reset(void) { stats_reset(&stats); }
 midi_recorder *bridge_recorder(void) { return &recorder; }
 void bridge_recorder_ports(u8 mask) { rec_ports = mask; }
 
+/* one pass of the loop: every source drained once, every generator stepped once.
+ * Public so the host test and fuzz harness (tests/test_bridge.c, tests/fuzz/fuzz_bridge.c)
+ * can drive it without a task. */
+int bridge_step(void)
+{
+    int busy = 0;
+    busy |= drain_trs();
+    busy |= drain_usb();
+    busy |= drain_ble();
+    busy |= drain_inject();
+    busy |= playback_step();
+    busy |= clock_step();
+    link_watch();
+    busy |= link_panic_step();
+    busy |= panic_step();
+    if (ble_pending) ble_flush();                  /* one notification per burst */
+    fm1_update_poll();                             /* handshake replies; a session blocks here */
+    return busy;
+}
+
 static void bridge_task(void *p)
 {
+    u32 beats = 0;
     (void)p;
     midilog_init();
-    u32 beats = 0;
     for (;;) {
-        int busy = 0;
+        int busy;
         health_bridge_alive();
         if ((++beats & 0x3FF) == 0) fm1_log_stack_note(FM1_TASK_BRIDGE);
-        busy |= drain_trs();
-        busy |= drain_usb();
-        busy |= drain_ble();
-        busy |= drain_inject();
-        busy |= playback_step();
-        busy |= clock_step();
-        link_watch();
-        busy |= link_panic_step();
-        busy |= panic_step();
-        if (ble_pending) ble_flush();                  /* one notification per burst */
-        fm1_update_poll();                             /* handshake replies; a session blocks here */
-        if (!busy && !uart_dev) os_time_dly(1);
+        busy = bridge_step();
+        if (!busy) os_sem_pend(&wake, 1);          /* or a tick (10 ms), a safety net */
     }
 }
 
 /* ------------------------------------------------------------------- init */
 
+/* UART1 at register level (trs_uart.c). The SDK's uart device is not used: its blocking
+ * read only returns when bytes arrive (so it needed a task of its own), and its
+ * non-blocking read returned nothing with bytes in the ring (fm1-emu); Felucca's
+ * register-level set-up is what runs on real FM-1s. */
 static void uart_init_trs(void)
 {
-    uart_dev = dev_open("uart1", NULL);
-    if (!uart_dev) {
-        log_error("uart1 (TRS MIDI IN) open failed");
-        fm1_log("uart1 (TRS MIDI IN) open failed");
-        return;
+    if (trs_uart_init() == 0) {
+        trs_on = 1;
+    } else {
+        log_error("TRS MIDI IN (UART1) init failed");
+        fm1_log("TRS MIDI IN (UART1) init failed");
     }
-    dev_ioctl(uart_dev, UART_SET_CIRCULAR_BUFF_ADDR, (u32)uart_ring);
-    dev_ioctl(uart_dev, UART_SET_CIRCULAR_BUFF_LENTH, (u32)sizeof uart_ring);
-    dev_ioctl(uart_dev, UART_SET_RECV_BLOCK, 1);
-    dev_ioctl(uart_dev, UART_SET_RECV_TIMEOUT, 2);   /* ms: paces the loop */
-    dev_ioctl(uart_dev, UART_START, 0);
 }
 
 midi_router *bridge_router(void)
@@ -431,6 +459,7 @@ midi_router *bridge_router(void)
 
 void bridge_init(void)
 {
+    os_sem_create(&wake, 0);                         /* before any producer is registered */
     router_init(&router, settings_get()->routes);
     settings_apply_router(settings_get(), &router);
     router_set_sink(&router, MIDI_PORT_USB, sink_usb, NULL);
@@ -447,11 +476,12 @@ void bridge_init(void)
     cbuf_init(&usb_cbuf, usb_ring, sizeof usb_ring);
     cbuf_init(&ble_cbuf, ble_ring, sizeof ble_ring);
     cbuf_init(&inj_cbuf, inj_ring, sizeof inj_ring);
+    cbuf_init(&trs_cbuf, trs_ring, sizeof trs_ring);
     usb_midi_set_rx_handler(0, NULL, usb_rx_isr);
     ble_port_set_rx(NULL, ble_rx_cb);
     uart_init_trs();
     fm1_update_boot_cleanup();
     os_task_create(bridge_task, NULL, 10, 1024, 0, "midi_bridge");
     log_info("bridge up: routes 0x%x", router.routes);
-    fm1_log("bridge up: routes 0x%x, uart1 %s", router.routes, uart_dev ? "open" : "FAILED");
+    fm1_log("bridge up: routes 0x%x, uart1 %s", router.routes, trs_on ? "on" : "FAILED");
 }

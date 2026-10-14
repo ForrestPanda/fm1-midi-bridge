@@ -193,6 +193,7 @@ c_SRC_FILES := \
 	$(SDK)/apps/common/update/update.c \
 	$(PROJ)/app_main.c \
 	$(PROJ)/bridge.c \
+	$(PROJ)/trs_uart.c \
 	$(PROJ)/update/fm1_update.c \
 	$(PROJ)/update/fm1_update_port.c \
 	$(PROJ)/ui/lcd.c \

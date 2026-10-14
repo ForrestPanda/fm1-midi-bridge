@@ -95,7 +95,10 @@ int midi_decode(const midi_msg *m, char *buf, int n)
     }
     case 0xC0: return snprintf(buf, (size_t)n, "%d Program %d", ch, m->b[1] + 1);
     case 0xD0: return snprintf(buf, (size_t)n, "%d ChanAT %d", ch, m->b[1]);
-    case 0xE0: return snprintf(buf, (size_t)n, "%d Bend %+d", ch, (m->b[1] | m->b[2] << 7) - 8192);
+    case 0xE0: {                                /* no "%+d": the SDK's printf prints a bare "d" for it */
+        int bend = (m->b[1] | m->b[2] << 7) - 8192;
+        return snprintf(buf, (size_t)n, "%d Bend %s%d", ch, bend < 0 ? "" : "+", bend);
+    }
     default:   return snprintf(buf, (size_t)n, "%02X %02X %02X", m->b[0], m->b[1], m->b[2]);
     }
 }

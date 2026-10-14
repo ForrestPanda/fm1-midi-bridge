@@ -19,7 +19,15 @@
 #define LOG_INFO_ENABLE
 #include "debug.h"
 
+/* 100 us a column: 1.1 ms frames, the matrix.h frame counts assume it; the ISR costs
+ * under 2% of core 0. Overridable on the make line (`-DMX_TICK_US=200`: then halve the
+ * frame counts too). */
+#ifndef MX_TICK_US
 #define MX_TICK_US 100
+#endif
+#ifndef MX_IRQ_PRIO
+#define MX_IRQ_PRIO 3
+#endif
 
 #define PA_SER   BIT(4)
 #define PA_SRCLK BIT(3)
@@ -92,7 +100,7 @@ static void timer_start(u32 us)
     TMR->CON |= BIT(14);
     TMR->PRD = prd;
     TMR->CON |= (u32)psc_code[psc] << 4;
-    request_irq(IRQ_TIMER3_IDX, 3, mx_isr, 0);
+    request_irq(IRQ_TIMER3_IDX, MX_IRQ_PRIO, mx_isr, 0);
     TMR->CON |= BIT(0);
     log_info("matrix scan: timer clk %u, prd %u psc %u", clk, prd, psc);
 }
