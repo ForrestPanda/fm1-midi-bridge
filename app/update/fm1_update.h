@@ -4,7 +4,7 @@
  * Protocol (documented in docs/update-protocol.md; the same one the stock
  * M-UPGRADE app, Felucca's installer and Felucca's loader speak):
  *   frame      F0 pack7(00 59 cmd len24 payload chk) F7     chk = ~sum(payload)
- *   0x11       handshake: we answer our identity (27 bytes, "FM-1_9B1" zero padded)
+ *   0x11       handshake: we answer our identity (27 bytes, "FM-1_931" zero padded)
  *   raw F0 22 24 35 7F F7   upgrade: run a session (below)
  *   raw F0 22 24 35 7D F7   soft key: reboot into the mask-ROM USB download mode
  *   0x30       our read request (flags, addr32, len24); the host answers with the
@@ -24,7 +24,7 @@
 #include <stdint.h>
 
 #ifndef UPD_IDENTITY
-#define UPD_IDENTITY        "FM-1_9B1"          /* must equal the package identity (tools/package.sh); the minimal build says FM-1_9B0 */
+#define UPD_IDENTITY        "FM-1_931"          /* must equal the package identity (tools/package.sh); the minimal build says FM-1_930 */
 #endif
 #define UPD_OTA_AREA        0x000E0000u         /* staged loader: 5 x 4 KiB sectors */
 #define UPD_OTA_AREA_LEN    0x5000u

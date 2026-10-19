@@ -2,6 +2,67 @@
 
 ## Unreleased
 
+- BLE out: a packet the stack refuses (buffer full) waits and is retried every pass while the
+  next one fills behind it, so batching adapts to the link; only a packet refused for 250 ms
+  is dropped, counted in the Status page's dropped figure (`bridge_ble_drops`). Before, the
+  refused packet was lost with its notes. Why: TRS to BLE worked on the first unit only with
+  the sending device's MIDI clock off (2026-10-19). **Future work, verify on hardware:** TRS to
+  BLE with the clock on; if notes still suffer, batch clock-only packets to the connection
+  interval, or default the TRS to BLE route's clock option off.
+- Screen-off is the panel's sleep (DISPOFF/SLPIN; SLPOUT, 120 ms, DISPON to wake), PA2 is left
+  low: PA2 is also the key matrix 595s' /OE, so with the "backlight" off no button, key or knob
+  read and nothing could wake the screen (found on the first unit 2026-10-19, as Felucca had on
+  1.1.5). The press that wakes the panel is swallowed whole (down, hold and release). Verified:
+  keys, buttons and knobs on all eleven columns, BLE MIDI from a phone through to USB, the wake.
+- Editor command 0x0C (matrix): scan ticks, port levels, closed rows per column, a test word
+  on the shift registers (all LEDs lit under it), the UI's event count and screen flag;
+  `fm1_editor.py matrix` / `matrix_all`. The log's last 400 bytes are saved to the VM before
+  a bridge-stall reset and replayed into the next boot's log (`FM1_STALLLOG_ID`).
+- Open: twice today the unit stayed enumerated on USB but answered no SysEx until a power cycle
+  (once with a bridge stall recorded in the health counters, once without); the saved stall
+  log is there to catch the next one. The USB MIDI switch (USB page) stops the device and is
+  saved: a unit that no longer shows on USB may simply have it off.
+- First install on hardware (2026-10-19, the record in `docs/recovery.md`): minimal build,
+  stock back, the full bridge; it boots, advertises "FM-1 MIDI". The panel did not react to the
+  SDK's "spi1" device, so `app/ui/lcd.c` drives SPI1 at register level now (Felucca's values);
+  its first version DMA'd a `const` byte out of flash and soft-locked the unit (a watchdog loop
+  before USB): payloads now go out of RAM, waits are bounded, a dead panel is given up, and the
+  UI leaves the panel alone after three unclean boots in a row (`health.unclean`,
+  `HEALTH_SAFE_BOOTS`; the panel init announces its stages to the record, `health_stage`).
+  Recovered through the mask ROM with `tools/dongle/stm32f4disco/` (the USB key from an
+  STM32F4-Discovery, verified) and jl-uboot-tool's write of the stock app area (verified);
+  `tools/dongle/fm1_key.py` is the RP2040 MicroPython version, untested. The final driver
+  (Felucca's path alone) shows the minimal build's status lines and the full bridge's UI.
+  Found there: the USB receive ring (512 bytes) lost the tail of the update protocol's
+  512-byte read reply, sent by the host as one bulk burst while the loop slept a tick, so
+  our own step 1 never saw a reply (nothing was written). `USB_RING` is 2048 now
+  (`tests/test_bridge.c` checks the new bound). New tools: `fm1_install_paced.py` (the
+  installer with the host's SysEx sent as sequencer events 48 bytes 2 ms apart: installs
+  over a firmware with the old ring) and `fm1_editor.py` (info, status, sysinfo and the
+  device log from the shell). `fm1_safe_install.sh` reported exit 0 on a failed install.
+- Identities renamed `FM-1_931` (full) and `FM-1_930` (minimal), from `FM-1_9B1` / `FM-1_9B0`
+  (2026-10-19, before the first install): Felucca's and the drummer's installers accept
+  `FM-1_` followed by digits only, so the old packages were refused before anything was
+  written, a running `FM-1_9B1` would not have parsed as an FM-1 and the loader's
+  `ota-FM-1_9B1` could not have been resumed. The identity is in `app/update/fm1_update.h`
+  (`UPD_IDENTITY`), `app/Makefile` (the minimal build) and `tools/package.sh`.
+- UI pass (2026-10-16), every page walked again in fm1-emu (`tools/ui_walk.py`, 59
+  runs): the Status page (ports and routes) is the home page (HOME from anywhere, hold HOME for the
+  new Perform page in a 16x28 font); the cursor is kept when coming back from a
+  sub-page or a dialog and skips information rows; hold OCT+ is a row's second action
+  (a route's options, a preset's page, storing a favourite, holding the log); KNOB1..4
+  accelerate on quick turns; the confirm dialog starts on "no"; every title row is a
+  blue band (the cursor stays the white bar) and shows the USB and Bluetooth state; the
+  home page is a dashboard, not a list (big-font links, counter and route tables, a
+  footer band; titled Status); pages that only refresh values redraw through the row
+  cache instead of repainting; switches are green when on; low battery, crashes and
+  input drops are orange; actions answer with a one-second note on the footer; the
+  main menu is grouped (Setup, Bench, Device; Presets moved out of System); Routing is
+  one row per route; the MIDI log keeps 64 lines with SELECT scrolling back and a
+  hold; presets show what they hold; the battery as a bar (thresholds unverified).
+  Fixed: the first press after the backlight went off was lost (a note or the PLAY
+  page turn did nothing); the Keyboard page's rows could not be changed from the
+  panel; SELECT was swallowed on the Keyboard page.
 - Runs in fm1-emu (2026-10-14): boots, UI, keys, encoders, TRS in, routing to USB and
   BLE, the device log readable from RAM. Found there and fixed:
   - the bridge loop paced itself with a blocking UART read, so keyboard, composer, USB
@@ -45,7 +106,7 @@ Everything is built and host-tested; nothing has run on an FM-1 yet.
 - Update step 1 compatible with M-VAVE's protocol, Felucca's loader, packager fork
   with the VM region kept clear of the staging area, soft key to the mask ROM.
 - Hardware readiness: device log over SysEx, minimal first-install build
-  (`make MINIMAL=1`, identity FM-1_9B0), fuzz harnesses under ASan/UBSan,
+  (`make MINIMAL=1`, identity FM-1_930), fuzz harnesses under ASan/UBSan,
   recovery script and flash dump/restore wrapper, `docs/recovery.md`,
   USB strings M-VAVE / FM-1.
 - Footprint: 344 KB of the 581 KB app slot, 88 KB static RAM (minimal: 200 KB, 79 KB).

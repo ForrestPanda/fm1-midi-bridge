@@ -12,6 +12,7 @@
 
 void fm1_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 const logring *fm1_log_ring(void);
+void fm1_log_raw(const char *s, uint32_t n);   /* bytes straight into the ring (a saved log replayed) */
 
 /* task stack margins, recorded by the tasks themselves (uxTaskGetStackHighWaterMark) */
 enum { FM1_TASK_BRIDGE = 0, FM1_TASK_UI = 1, FM1_TASK_COUNT };

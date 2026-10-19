@@ -15,7 +15,7 @@
 
 typedef struct {
     uint32_t ms;                         /* timer_get_ms() */
-    int usb_configured, ble_ready;
+    int usb_configured, ble_ready, ble_full;     /* ble_full: the stack refuses every send */
     uint16_t ble_max;                    /* ble_port_max_packet() */
     int uart_fail;                       /* dev_open("uart1") returns NULL when set before bridge_init */
     uint8_t trs[SIM_TRS_MAX]; uint32_t trs_len, trs_pos;   /* bytes dev_read hands out */

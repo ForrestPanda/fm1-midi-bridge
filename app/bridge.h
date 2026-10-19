@@ -9,6 +9,7 @@
 void bridge_init(void);                 /* opens the UART, starts the bridge task */
 midi_router *bridge_router(void);
 int bridge_pump_usb(void);              /* drain USB input once; 1 if something was there */
+u32 bridge_ble_drops(void);             /* BLE packets given up on (the stack refused them for 250 ms) */
 int bridge_step(void);                  /* one pass of the bridge loop; 1 if anything was done */
 void bridge_trs_rx(const u8 *bytes, u32 n);        /* TRS bytes in (the UART reader task; the host test) */
 void bridge_inject(int port, const midi_msg *m);   /* from any task: route a message as if it came from port */

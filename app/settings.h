@@ -70,6 +70,7 @@ int  settings_preset_used(int slot);                     /* 1 if the slot holds 
 int  settings_preset_save(int slot);                     /* current settings -> slot; 0 = ok */
 int  settings_preset_load(int slot);                     /* slot -> current settings (caller applies); 0 = ok */
 int  settings_preset_clear(int slot);
+int  settings_preset_peek(int slot, fm1_settings *out);  /* the slot's snapshot without applying it; 0 = ok */
 
 /* platform hooks (settings_port.c on the SDK, the test on the host) */
 int  settings_port_read(uint16_t id, void *buf, uint16_t len);        /* bytes read, <= 0 if none */

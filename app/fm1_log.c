@@ -20,6 +20,8 @@ void log_putbyte(char c)
     logring_put(&ring, c);
 }
 
+void fm1_log_raw(const char *s, uint32_t n) { logring_write(&ring, s, n); }
+
 void fm1_log(const char *fmt, ...)
 {
     char line[128];

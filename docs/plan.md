@@ -9,7 +9,9 @@
    the Felucca installer accepts. Nothing flashed yet.
 2. **First boot (hardware).** Blink an LED / draw on the LCD from the SDK, confirm
    the update entry works *before* anything else: install, then install again,
-   then install stock. Only then continue.
+   then install stock. Only then continue. **Done 2026-10-19** on the first unit (the record:
+   `recovery.md`, "The bridge on the first unit"): minimal build, stock back through our updater
+   after the USB ring fix, then the full bridge, which boots with BLE advertising and the LCD up.
 3. **USB MIDI device** on the SDK's USB stack (it has HID/CDC/audio classes; MIDI
    may need a custom class descriptor). Loopback test with a computer.
 4. **TRS MIDI IN** on UART1 (PH8), parser, forward to USB. Test with a keyboard.
@@ -157,7 +159,7 @@
 - 2026-10-12, hardware readiness: the device log (`app/fm1_log.c`, 4 KB ring, the
   SDK `log_putbyte` hook, editor commands 0x0A/0x0B, web editor Device log card and
   sysinfo rows: heap, task stack margins, health counters); the minimal build
-  (`make MINIMAL=1`, `app/minimal.c`, identity FM-1_9B0, `tools/package.sh --minimal`);
+  (`make MINIMAL=1`, `app/minimal.c`, identity FM-1_930, `tools/package.sh --minimal`);
   fuzz harnesses under ASan/UBSan for every parser the bridge task runs
   (`tests/fuzz`, 400k iterations each clean, update entry at 96% line coverage);
   `tools/fm1_recover.py` (soft key, SDK vendor request, wait for UBOOT),
@@ -174,10 +176,59 @@
   runs full -> minimal -> full against both device identities. `tests/fuzz/soak.sh`
   for long runs with a fresh seed; the driver saves a crashing input for replay.
 
+- 2026-10-16, UI pass (all of it walked in fm1-emu, `tools/ui_walk.py`, 59 runs):
+  - Two bugs: the backlight wake swallowed the first press after a dark pause (a note
+    key or the PLAY page turn did nothing); MIDI jobs now run before the wake check.
+    The Keyboard page had no way to change its own rows (KNOB1 sends CC 1 there and
+    OCT-/+ shifted the octave): OCT-/+ now adjust the highlighted row, the cursor
+    starts on Octave, held OCT-/+ shift the octave from any row.
+  - Navigation: the cursor stays where it was when a page is re-entered by OCT- or a
+    closed dialog (`ui_came_back()`, `ui_menu_enter()`); the cursor skips INFO rows and
+    blank separators; hold OCT+ (700 ms) is a row's second action (`ui_item.hold`:
+    a route's options, a preset's page, storing a favourite, holding the log); KNOB1..4
+    accelerate (gap < 40 ms x10, < 100 ms x3, `accelerate()` in `ui.c`; pages that add
+    the delta get it, pages that look at its sign do not); the confirm dialog starts
+    on "no" and SELECT reaches "yes".
+  - The title row is a dark blue band (`UI_C_TITLE_BG`, status in `UI_C_TITLE_ST`),
+    the cursor the white bar: before, both were black on white and looked alike.
+  - The home page (Status) must not look like a menu: USB/BLE in the big font, the
+    counters and the routes as tables (a star on a counter that moved), a footer band
+    to match the title band. Its 300 ms refresh and the menu's battery refresh go
+    through the row cache (`ui_refresh`), not a full repaint.
+  - Glanceability: the Status page (formerly Connections) is the home page (after the splash, HOME from
+    anywhere, the root of OCT-; HOME there opens the menu; its LED means home); every
+    title row ends with "U:.. B:.." (`ui_title()`); toggles green/dim (`ui_row2()`,
+    one colour split per row in the cache); `UI_C_WARN` on low battery, crashes and
+    input drops (`ui_item.warn`); `ui_toast()` on the footer for 1.2 s after actions;
+    the Perform page (`PAGE_PERFORM`, hold HOME) in a 16x28 DejaVu font
+    (`app/ui/font_big.h`, `mkfont.py --size 24 --w 16 --h 28 --name BIG`,
+    `lcd_text_big()` drawn in two 14-row passes through the existing strip).
+  - Smaller: the main menu in three groups (Setup / Bench / Device, Presets moved up
+    from System); the Routing page is one row per route with the option marks; the
+    MIDI log keeps 64 lines, SELECT scrolls back ("^N"), hold OCT+ holds the view
+    ("PAUSED"); presets show a summary of what they hold (`settings_preset_peek()`);
+    battery as a 4-cell bar with uncalibrated thresholds (4.0 / 3.8 / 3.65 / 3.5 V at
+    the pin, `BAT_*_MV` in `ui.c`); a zeroed composer favourite reads "empty".
+  - Found by the walk pictures: the Keyboard page compared the event id with
+    `MX_BTN_OCT_MINUS` (0) without the type, which is also `MX_ENC_SELECT`, so SELECT
+    turns were swallowed there. The SDK's printf also lacks `%.*s` and `%-23.23s` as far
+    as we know, so no precision forms are used (padding by hand).
+
 ### Verify on hardware (UI)
-- Splash then main menu; SELECT scrolls, clockwise = down (if it is up, the encoder
-  sign in `matrix.c` `qtab` is the other way round on real parts); OCT+/OCT- navigate;
-  HOME returns to the menu.
+- Splash then the Status page; HOME opens the menu; SELECT scrolls, clockwise =
+  down (if it is up, the encoder sign in `matrix.c` `qtab` is the other way round on
+  real parts); OCT+/OCT- navigate; HOME returns to the Status page from any page.
+- Battery bar thresholds (`BAT_*_MV` in `ui.c`) against a meter on the cell: the
+  divider ratio is unknown; the orange "low" must come before the SDK's own cut-off.
+- Encoder acceleration feel: a deliberate turn should step by 1, a quick one by 3, a
+  flick by 10 (the gaps are measured by the UI task, `accelerate()`); retune the 40 and
+  100 ms thresholds if real detents land differently.
+- Hold timing: 700 ms (`MX_HOLD_FRAMES`) for hold OCT+, hold HOME, hold GLO, hold
+  OCT-/+ on the Keyboard page; the release after a hold does nothing.
+- With the backlight off, a note key, a mapped button and a knob on the Keyboard page
+  send their MIDI and light the panel; a menu button only lights the panel.
+- The Perform page's big font on the real panel: legibility at a metre, the 16 px
+  strip under the eighth row holds the footer.
 - The 10 kHz TIMER3 ISR does not disturb TRS MIDI, USB or BLE (log page still shows a
   TRS keyboard while scrolling menus). If TIMER3 is taken, use TIMER2 (`matrix_port.c`).
 - TRS MIDI IN through `app/trs_uart.c` (register level, Felucca's set-up): a keyboard on
@@ -219,15 +270,15 @@ never the head. Stock v15 is the recovery path, not a prerequisite.
 1. `tools/install.sh --info` on stock: note the identity and that the handshake works.
    Note the USB VID/PID and product string of stock (`lsusb -v`) for `app/usb/descriptor.c`.
 2. Back up: keep the stock `FM-1.fwsc`; confirm M-UPGRADE can reinstall it once.
-3. Install `fm1bridge-minimal.fwsc` first (identity FM-1_9B0: no radio, no keys, no UI
+3. Install `fm1bridge-minimal.fwsc` first (identity FM-1_930: no radio, no keys, no UI
    task). Expected: the installer's step 1 is served by our app (17 read requests),
    the loader appears as `ota-FM-1_015`, step 2 writes.
 4. On boot: the status screen; USB enumerates as "FM-1" MIDI; `tools/install.sh --info`
-   gets `FM-1_9B0`; the web editor connects, the Device log card shows the boot lines
+   gets `FM-1_930`; the web editor connects, the Device log card shows the boot lines
    (and whether SDK printf output reaches the ring through `log_putbyte`), the Device
    card shows heap and stack margins; a TRS keyboard counts on the screen.
 5. Install the minimal build again (proves our step 1 on hardware), then install
-   stock back, then the full `fm1bridge.fwsc` (identity FM-1_9B1).
+   stock back, then the full `fm1bridge.fwsc` (identity FM-1_931).
 6. Only then: TRS keyboard -> BLE/USB, USB <-> BLE, soft key (`tools/fm1_recover.py
    --softkey`, then the vendor request). PC3 stays undriven; the SysEx log is the console.
    The logger screen shows every message as it passes, so a keyboard on TRS should
@@ -237,10 +288,20 @@ never the head. Stock v15 is the recovery path, not a prerequisite.
 
 ## Still open
 
-- Stock USB VID/PID: `app/usb/descriptor.c` says M-VAVE / FM-1 but keeps JieLi's
-  0x3654 VID and the SDK PID until read from a real unit (`lsusb -v` on stock).
-- Whether the hardware-side details of the board file are right: the LCD SPI pins,
-  the key matrix tables (may differ by batch), the codec lines, PB1 never driven.
+- TRS to BLE with a MIDI clock on the sending device (2026-10-19: it worked with the clock
+  off; the refused-packet retry went in untested on hardware). Candidates if it still
+  suffers: clock-only packets held to the connection interval, the route's clock option off
+  by default, or the clock master instead of a forwarded clock. The route option exists
+  today: Routing > TRS to BLE > options > clock.
+- Twice on 2026-10-19 the unit stayed enumerated on USB but answered no SysEx until a power
+  cycle; the log's tail before a stall reset is saved now (`FM1_STALLLOG_ID`), read the boot
+  log after the next one.
+- USB VID/PID: stock is 4c4a:c755 (read 2026-10-19, `hardware.md`); `app/usb/descriptor.c`
+  keeps JieLi's 3654:4155 with the M-VAVE / FM-1 strings, which every installer finds by name.
+  Decide whether to copy stock's ids (M-UPGRADE may look for them).
+- Whether the hardware-side details of the board file are right: the key matrix tables (may
+  differ by batch), the codec lines, PB1 never driven. The LCD pins and the register path are
+  verified (2026-10-19, `hardware.md`); the SDK's "spi1" device is not used for the panel.
 - Debug UART: the SDK demo prints on UART2 TX = PC3. Every open FM-1 firmware
   leaves PC3 alone (Felucca drives PC0/1/2/6 for the codec and PC7..PC10 for the
   panel; nothing documents PC3, PC4, PC5) and there is no schematic, so "free" cannot
@@ -341,5 +402,7 @@ never the head. Stock v15 is the recovery path, not a prerequisite.
 - Stock BLE name and whether stock already bridges TRS -> BLE (if it does, part of
   this project is moot and the value is USB <-> BLE and host mode).
 - Chip key: read the identity, compare with Felucca's assumed 0x980F.
-- Whether UART1 TX is routed anywhere near the TRS jack (MIDI OUT mod).
+- The 26-GPIO bond-out (no free pin, PC3 absent): `hardware.md`, "Adding a MIDI OUT".
+  The MIDI OUT mod itself is not pursued (decided 2026-10-14: too invasive); the section
+  stays as the record of what it would take.
 - TRS jack wiring (Type A vs Type B) for the adapter cable.

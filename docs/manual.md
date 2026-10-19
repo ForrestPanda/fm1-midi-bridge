@@ -27,47 +27,82 @@ and told whether to pass clock and SysEx.
 
 ![Splash screen](ui-examples/01-splash.png)
 
+![Status, the home page](ui-examples/20-status.png)
+
 ![Main menu](ui-examples/02-main-menu.png)
 
-The screen shows a menu. The controls that drive it are always the same:
+After the splash the screen shows the **Status** page: the two links in the big font,
+the ports' counters and the routes as tables, between a title band and a footer band.
+It is a dashboard, not a menu: nothing on it is highlighted or selectable. HOME or OCT+ there opens the main menu, HOME from anywhere
+else comes back to it. The menu is in three groups, Setup, Bench and Device, and its
+first two rows are the two status pages, Status and Perform.
+
+The controls that drive every page are the same:
 
 | Control | Does |
 | --- | --- |
-| SELECT encoder (or PRESETS) | moves the highlight up and down |
+| SELECT encoder (or PRESETS) | moves the highlight up and down; it skips rows that are only information |
 | OCT+ | OK: enters a page, toggles a switch, cycles a choice, confirms |
-| OCT- | back |
-| HOME | back to the main menu from anywhere |
-| KNOB1 | changes the highlighted value (numbers, choices) |
+| hold OCT+ | a row's second action where it has one: a route's options, a preset's page, storing a favourite |
+| OCT- | back, with the highlight where you left it |
+| HOME | the Status page from anywhere (the menu, from Status) |
+| hold HOME | the Perform page |
+| KNOB1 | changes the highlighted value; a quick turn steps by 3, a flick by 10 |
 | hold GLO | Bluetooth power saving on or off, from any page |
 
 The other buttons and the 27 keys are free for MIDI jobs. The button LEDs mean:
-HOME lit = main menu; GLO lit = power saving on; REC blinks on USB traffic and PLAY
-on Bluetooth traffic unless you gave them a MIDI job; a key or button lights while it
-is held and sending.
+HOME lit = the Status page; GLO lit = power saving on; REC blinks on USB traffic
+and PLAY on Bluetooth traffic unless you gave them a MIDI job; a key or button lights
+while it is held and sending.
 
-The main menu's bottom line shows the USB state, the Bluetooth state, "ECO" when
-power saving is on, and the battery voltage.
+The title row is a blue band, the highlighted row a white bar, so the two are never
+confused. Every title row ends with the link status, "U:ok B:adv" for example: USB "ok" when
+the computer has enumerated the FM-1, Bluetooth "ok" when a device is connected,
+"con" while connecting, "adv" while advertising, "host" in host mode. A switch that is
+on is green, one that is off is dim. Anything that needs attention (a low battery, a
+crash counter above zero, dropped input events) is orange. An action that has no
+visible effect of its own ("stored", "sent", "settings reset") says so on the bottom
+line for a second.
+
+The main menu's bottom line shows the battery as a bar and a voltage, and "ECO" when
+power saving is on. The bar's steps are guesses until a unit has been measured: four
+cells above 4.0 V, one cell down to 3.5 V, orange below that.
+
+A question that cannot be undone (reset the settings, forget the pairings, reboot
+into recovery) starts with the highlight on "no": turn SELECT up to "yes" and press
+OCT+.
+
+![Confirmation dialog](ui-examples/12-confirm.png)
 
 ## Pages
 
-### Connections
+### Status
 
-![Connections page](ui-examples/20-connections.png)
+The home page. USB and BLE in the big font, green when the link is up. Below, a
+table of the four ports' counters, in and out, with a star on a counter that moved
+since the last refresh (three a second). Then the six routes as a table, a row per
+source and a column per destination, each cell the switch and a note of any option
+set on the route ("ch" for a channel filter, "map" for a remap, "noclk" when clock is
+blocked); an off route is dimmed. The last rows hold the global filters with the
+dropped count and the battery. This is the page to look at when "nothing arrives":
+it tells you which link is up and which route is off. OCT+ opens the menu.
 
-One screen with the four ports, their state and counters, a star where something
-moved since the last refresh, and the six routes with their switches and a note of
-any option set on them: "ch" for a channel filter, "map" for a remap, "noclk" when
-clock is blocked. The bottom line shows the global filters and the dropped count.
-This is the page to look at when "nothing arrives": it tells you which link is up
-and which route is off.
+### Perform
+
+![Perform page](ui-examples/27-perform.png)
+
+The stage page, in a font readable from a music stand: the USB and Bluetooth state,
+"ECO" when power saving is on, the keyboard's octave and channel, its velocity, the
+four ports lit green while something moves on them, and the battery. OCT- and OCT+
+shift the octave here. Hold HOME on any page to get here; HOME leaves.
 
 ### Routing
 
 ![Routing page](ui-examples/03-routing.png)
-Six switches: TRS in to BLE out, TRS in to USB out, USB in to BLE out, BLE in to
-USB out, Keys to USB out, Keys to BLE out. Below them, "Options ..." opens the
-options of one route, and "Inputs" the input transforms. Counters per port show
-messages in and out.
+One row per route: TRS to BLE, TRS to USB, USB to BLE, BLE to USB, Keys to USB, Keys
+to BLE. OCT+ switches a route; the row also shows what is set on it ("ch", "map",
+"noclk", "nosx"). Hold OCT+ on a route to open its options. "Inputs" opens the input
+transforms. Counters per port show messages in and out.
 
 **Route options**
 
@@ -89,12 +124,20 @@ messages in and out.
 ![MIDI log page](ui-examples/04-midi-log.png)
 ![MIDI log page, decoded](ui-examples/21-midi-log-decoded.png)
 
-The last sixteen messages from any port, newest at the bottom. OCT+ switches
-between raw bytes and decoded text: "1 NoteOn C4 100" is channel 1, note on, middle
-C, velocity 100; "1 CC7 volume 127" names the controller; a line starting with ">"
-is something the Composer sent out. SysEx shows its size, and a Universal Device
-Inquiry or its reply is recognised, the reply with the manufacturer's name. OCT-
-leaves.
+The last messages from any port, newest at the bottom; the screen shows sixteen and
+the FM-1 keeps sixty-four. OCT+ switches between raw bytes and decoded text:
+"1 NoteOn C4 100" is channel 1, note on, middle C, velocity 100; "1 CC7 volume 127"
+names the controller; a line starting with ">" is something the Composer sent out.
+SysEx shows its size, and a Universal Device Inquiry or its reply is recognised, the
+reply with the manufacturer's name.
+
+Turn SELECT up to read back through what has scrolled away: the status line then
+shows "^N", how many lines you are behind the newest, and the view stays where it
+is while new messages keep arriving underneath; turn back down to the newest line
+and it follows again. Hold OCT+ to freeze the view ("PAUSED" on the status line),
+hold it again to release. OCT- leaves.
+
+![MIDI log held](ui-examples/30-midi-log-paused.png)
 
 ### Composer
 
@@ -106,8 +149,8 @@ start, continue, stop, a Universal Device Inquiry, or three raw bytes. Set the
 channel and the data with KNOB1; the Send row shows the decoded result before you
 send it. *To* chooses USB, Bluetooth or both; the message bypasses routes and
 filters. A note is released automatically a quarter second later. Four favourites
-can hold messages you use often; "store here" saves the current one, and the
-favourite's row sends it. The sent messages appear in the log with a ">" mark, and
+hold messages you use often: OCT+ on a favourite's row sends it, hold OCT+ stores the
+message above in it. The sent messages appear in the log with a ">" mark, and
 whatever the other end answers appears after them, so the inquiry is a quick way to
 ask a connected synth or app who it is.
 
@@ -149,16 +192,18 @@ good enough to drive an arpeggiator or a drum app, not a reference clock.
 ### Keyboard
 
 ![Keyboard page](ui-examples/14-keyboard.png)
+- On this page OCT- and OCT+ decrease and increase the highlighted row, and the
+  highlight starts on *Octave*, so they shift the octave until you move it. Held, they
+  shift the octave from any row. SAVE leaves, since OCT- is taken.
 - *Keys send MIDI*: the 27 keys play notes (F3 to G5 at octave 0). Off silences them;
   keys and buttons with a MIDI job keep working.
-- *Channel*, *Octave* (-3 to +3; on this page OCT- and OCT+ shift it), *Velocity*.
+- *Channel*, *Octave* (-3 to +3), *Velocity*.
 - *Velocity source*: fixed, or the MASTER pot, which then sets the velocity of every
   note, 1 to 127 across its travel.
 - *Program* and *Bank*: the PRESETS encoder sends program changes, ALGORITHM sends
   the bank select MSB.
 - KNOB1 to KNOB4 send control changes 1, 74, 71 and 7 while this page is open.
   Elsewhere KNOB1 belongs to the menu.
-- SAVE leaves this page, since OCT- is taken.
 
 ### Button MIDI
 
@@ -208,29 +253,38 @@ connected get all notes off, so nothing stays stuck. *Note collision guard*: whe
 sources send the same note to one output, a note held by one is not cut off by the
 other's release, and a repeated note on retriggers cleanly instead of stacking.
 
+### Presets
+
+![Presets page](ui-examples/18-presets.png)
+
+![A preset's page](ui-examples/28-preset-slot.png)
+
+Four slots, each a snapshot of every setting (the Bluetooth pairings excepted). A
+used slot's row says what it holds: how many of the six routes are on, the keyboard
+channel, "host" and "eco" when set. OCT+ on a used slot loads it, on an empty slot
+saves into it, after a confirmation. Hold OCT+ for the slot's own page: load, save
+here, clear.
+
 ### Display
 
 ![Display page](ui-examples/10-display.png)
-Backlight off after never, 10 s, 30 s, 1 min or 5 min; any input wakes it. Invert
-colours.
+Screen off after never, 10 s, 30 s, 1 min or 5 min (the panel sleeps, its backlight stays lit: the backlight line also enables the key matrix); any press or knob turn wakes it, and that input does nothing else. The keys,
+the knobs on the Keyboard page and every MIDI job keep working while the panel is
+dark, so the first pedal press after a pause is never lost. Invert colours.
 
 ### System
 
 ![System page](ui-examples/11-system.png)
 
-![Presets page](ui-examples/18-presets.png)
-
 ![Input test page](ui-examples/13-input-test.png)
 
-![Confirmation dialog](ui-examples/12-confirm.png)
 Firmware identity, version and build date, battery voltage at the pin (not calibrated),
 uptime, counters per port, input event drops, the boot count, why the chip last
 reset (power on, software, watchdog, ...) and how many watchdog resets and bridge
-stalls it has seen. If "Crashes" ever climbs, that is the first thing to report.
-*Reboot*. *USB recovery mode* restarts
-into the chip's USB download mode, for M-VAVE's updater or a recovery tool. *Reset
-settings*. *Presets*: four slots; "save here" stores everything as it is, "load"
-applies a slot, "clear" empties it. *Input test* shows what the key scanner sees.
+stalls it has seen. If "Crashes" ever climbs, that is the first thing to report; the
+row turns orange. *Reboot*. *USB recovery mode* restarts into the chip's USB download
+mode, for M-VAVE's updater or a recovery tool. *Reset settings*. *Input test* shows
+what the key scanner sees.
 
 ## Web editor
 
@@ -250,7 +304,7 @@ M-VAVE's updater works. To return to the original firmware, run M-VAVE's updater
 with the official package; the bridge answers its handshake like the stock firmware
 does. Keep the official package on your computer.
 
-The first firmware to put on a new unit is the minimal build (`FM-1_9B0`): the
+The first firmware to put on a new unit is the minimal build (`FM-1_930`): the
 same updater and USB MIDI, a status screen, nothing else. It proves the install path
 both ways before the full bridge goes on. Its screen has no menu and reads no keys:
 the USB state, the TRS and USB counters, the boot count and reset reason, and the

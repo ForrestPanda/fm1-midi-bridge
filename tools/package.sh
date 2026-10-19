@@ -7,8 +7,8 @@
 #   - build/loader/ota.bin  Felucca's update loader (step 2 of the install), a separate
 #                           program the SPL runs; its source is in the Felucca checkout
 #
-#   tools/package.sh [IDENTITY]       default identity FM-1_9B1 (FM-1_9xx: custom firmware)
-#   tools/package.sh --minimal        build/minimal/app.bin -> build/fm1bridge-minimal.fwsc, identity FM-1_9B0
+#   tools/package.sh [IDENTITY]       default identity FM-1_931 (FM-1_9xx: custom firmware)
+#   tools/package.sh --minimal        build/minimal/app.bin -> build/fm1bridge-minimal.fwsc, identity FM-1_930
 #
 # Env: FELUCCA (default ../../Felucca), AC79_SDK (default ~/fw-AC79_AIoT_SDK)
 set -e
@@ -16,9 +16,9 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 FELUCCA=${FELUCCA:-$here/../../Felucca}
 export AC79_SDK=${AC79_SDK:-$HOME/fw-AC79_AIoT_SDK}
 if [ "$1" = "--minimal" ]; then
-    shift; ident=${1:-FM-1_9B0}; app=$here/build/minimal/app.bin; out=$here/build/fm1bridge-minimal.fwsc; hint="make -C app MINIMAL=1"
+    shift; ident=${1:-FM-1_930}; app=$here/build/minimal/app.bin; out=$here/build/fm1bridge-minimal.fwsc; hint="make -C app MINIMAL=1"
 else
-    ident=${1:-FM-1_9B1}; app=$here/build/app.bin; out=$here/build/fm1bridge.fwsc; hint="make -C app"
+    ident=${1:-FM-1_931}; app=$here/build/app.bin; out=$here/build/fm1bridge.fwsc; hint="make -C app"
 fi
 ldr=$FELUCCA/build/loader/ota.bin
 [ -f "$app" ] || { echo "package.sh: $app missing: $hint first"; exit 1; }

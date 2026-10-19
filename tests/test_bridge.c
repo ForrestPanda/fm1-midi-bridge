@@ -298,15 +298,37 @@ static void test_merge_guard(void)
     CHECK(usb_msgs() == 2);
 }
 
+/* a BLE stack that refuses sends: the packet waits and the next messages batch behind it; a
+ * link that stays refused for 250 ms costs that one packet, counted */
+static void test_ble_busy(void)
+{
+    static const uint8_t n1[] = { 0x90, 0x3C, 0x64 }, n2[] = { 0x90, 0x3E, 0x64 }, n3[] = { 0x90, 0x40, 0x64 };
+    fresh();
+    sim.ble_full = 1;
+    sim_trs_push(n1, 3); steps_ms(1, 10);
+    sim_trs_push(n2, 3); steps_ms(1, 10);
+    sim_trs_push(n3, 3); steps_ms(1, 10);
+    CHECK(sim.ble_out_n == 0 && bridge_ble_drops() == 0);             /* nothing sent, nothing lost */
+    sim.ble_full = 0;
+    steps_ms(2, 10);
+    CHECK(sim.ble_out_n == 2 && ble_msgs() == 3);                     /* the waiting packet, then the two batched behind it */
+    sim_clear_out();
+    sim.ble_full = 1;
+    sim_trs_push(n1, 3); steps_ms(30, 10);                            /* 300 ms refused: given up, counted */
+    CHECK(sim.ble_out_n == 0 && bridge_ble_drops() == 1);
+    sim.ble_full = 0;
+}
+
 static void test_usb_ring_full(void)
 {
     static uint8_t burst[1024]; int i;
     fresh();
     for (i = 0; i < 256; i++) { burst[i * 4] = 0x09; burst[i * 4 + 1] = 0x90; burst[i * 4 + 2] = 0x40; burst[i * 4 + 3] = 0x40; }
-    sim_usb_push(burst, 600);                                       /* more than the 512-byte ring: refused whole */
-    sim_usb_push(burst, 400);                                       /* fits */
-    steps(20);
-    CHECK(bridge_router()->count_in[MIDI_PORT_USB] == 100);
+    sim_usb_push(burst, 1024);                                      /* the ring holds 2048: one update reply (808) and more */
+    sim_usb_push(burst, 1024);                                      /* full */
+    sim_usb_push(burst, 1024);                                      /* no room: refused whole */
+    steps(40);
+    CHECK(bridge_router()->count_in[MIDI_PORT_USB] == 512);
     CHECK(ble_msgs() > 0);
 }
 
@@ -334,6 +356,7 @@ int main(void)
     test_recorder();
     test_merge_guard();
     test_usb_ring_full();
+    test_ble_busy();
     test_no_uart();
     if (fails) { printf("%d failure(s)\n", fails); return 1; }
     printf("bridge tests passed\n");

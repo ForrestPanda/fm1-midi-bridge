@@ -13,6 +13,13 @@
 
 static const uint8_t prefix[EDITOR_PREFIX_LEN] = { 0xF0, 0x7D, 'F', 'M', '1' };
 
+__attribute__((weak)) void editor_port_matrix(uint32_t *ticks, uint32_t *pa, uint32_t *pb, uint8_t *raw, uint32_t ncols)
+{
+    (void)raw; (void)ncols;
+    *ticks = *pa = *pb = 0;
+}
+__attribute__((weak)) void editor_port_matrix_force(uint32_t word, uint32_t ticks) { (void)word; (void)ticks; }
+
 int editor_is_frame(const uint8_t *wire, uint32_t n)
 {
     return n >= EDITOR_PREFIX_LEN + 2 && memcmp(wire, prefix, EDITOR_PREFIX_LEN) == 0;
@@ -113,6 +120,20 @@ int editor_handle(const uint8_t *wire, uint32_t n)
         out[0] = (uint8_t)total; out[1] = (uint8_t)(total >> 8); out[2] = (uint8_t)(total >> 16); out[3] = (uint8_t)(total >> 24);
         out[4] = (uint8_t)from;  out[5] = (uint8_t)(from >> 8);  out[6] = (uint8_t)(from >> 16);  out[7] = (uint8_t)(from >> 24);
         reply(0x4A, out, 8 + got, 1);
+        return 1;
+    }
+    case 0x0C: {
+        uint8_t out[12 + 24];
+        uint32_t ticks = 0, pa = 0, pb = 0;
+        memset(out, 0, sizeof out);
+        if (n >= EDITOR_PREFIX_LEN + 6)
+            editor_port_matrix_force((uint32_t)(wire[EDITOR_PREFIX_LEN + 1] & 0x7F) | (uint32_t)(wire[EDITOR_PREFIX_LEN + 2] & 0x7F) << 7,
+                                     (uint32_t)(wire[EDITOR_PREFIX_LEN + 3] & 0x7F) | (uint32_t)(wire[EDITOR_PREFIX_LEN + 4] & 0x7F) << 7);
+        editor_port_matrix(&ticks, &pa, &pb, out + 12, 24);
+        out[0] = (uint8_t)ticks; out[1] = (uint8_t)(ticks >> 8); out[2] = (uint8_t)(ticks >> 16); out[3] = (uint8_t)(ticks >> 24);
+        out[4] = (uint8_t)pa; out[5] = (uint8_t)(pa >> 8); out[6] = (uint8_t)(pa >> 16); out[7] = (uint8_t)(pa >> 24);
+        out[8] = (uint8_t)pb; out[9] = (uint8_t)(pb >> 8); out[10] = (uint8_t)(pb >> 16); out[11] = (uint8_t)(pb >> 24);
+        reply(0x4C, out, sizeof out, 1);
         return 1;
     }
     case 0x0B: {

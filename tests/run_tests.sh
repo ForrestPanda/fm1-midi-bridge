@@ -7,12 +7,12 @@ mkdir -p ../build
 ${CC:-cc} -std=c99 -Wall -Wextra -Wpedantic -Werror -O1 -g -o ../build/test_midi \
     test_midi.c ../app/midi/midi_msg.c ../app/midi/blemidi.c ../app/midi/usbmidi.c ../app/midi/router.c ../app/midi/panic.c ../app/midi/keys.c ../app/midi/decode.c ../app/midi/compose.c ../app/midi/stats.c ../app/midi/recorder.c ../app/midi/merge.c
 ../build/test_midi
-# the update entry as the full build (FM-1_9B1) and as the minimal build (FM-1_9B0), each
+# the update entry as the full build (FM-1_931) and as the minimal build (FM-1_930), each
 # installing full -> minimal -> full from build/ (skipped where a package is missing)
 ${CC:-cc} -std=c99 -Wall -Wextra -Wpedantic -Werror -O1 -g -I../app -o ../build/test_update \
     test_update.c ../app/update/fm1_update.c ../app/util/crc16.c ../app/util/pack7.c
 ../build/test_update
-${CC:-cc} -std=c99 -Wall -Wextra -Wpedantic -Werror -O1 -g -I../app -DUPD_IDENTITY='"FM-1_9B0"' -o ../build/test_update_minimal \
+${CC:-cc} -std=c99 -Wall -Wextra -Wpedantic -Werror -O1 -g -I../app -DUPD_IDENTITY='"FM-1_930"' -o ../build/test_update_minimal \
     test_update.c ../app/update/fm1_update.c ../app/util/crc16.c ../app/util/pack7.c
 ../build/test_update_minimal
 ${CC:-cc} -std=c99 -Wall -Wextra -Wpedantic -Werror -O1 -g -I../app -o ../build/test_settings \

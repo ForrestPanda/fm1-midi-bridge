@@ -40,6 +40,11 @@
 static SEC_USED(.volatile_ram) mx_state state;
 static SEC_USED(.volatile_ram) u8 cur_col, next_col;
 static SEC_USED(.volatile_ram) JL_TIMER_TypeDef *TMR = JL_TIMER3;
+static SEC_USED(.volatile_ram) u32 dbg_ticks, dbg_pa, dbg_pb;      /* for the editor's matrix readout */
+static SEC_USED(.volatile_ram) u8 dbg_raw[16];
+static SEC_USED(.volatile_ram) u16 dbg_force_word = 0xFFFF;         /* test: this word on the 595s instead of the scan */
+static SEC_USED(.volatile_ram) u16 dbg_force_cnt;
+static SEC_USED(.volatile_ram) u8 dbg_force_rows;
 
 #define RAMCODE SEC_USED(.volatile_ram_code)
 
@@ -74,6 +79,20 @@ static ___interrupt RAMCODE void mx_isr(void)
     TMR->CON |= BIT(14);                          /* clear pending */
     pa = JL_PORTA->IN;
     pb = JL_PORTB->IN;
+    dbg_ticks++; dbg_pa = pa; dbg_pb = pb;
+    if (dbg_force_cnt) {                          /* the test word stays latched; rows read as they are */
+        dbg_force_cnt--;
+        if (!(pa & BIT(0))) closed |= BIT(MX_ROW_PA0);
+        if (!(pa & BIT(5))) closed |= BIT(MX_ROW_PA5);
+        if (!(pa & BIT(6))) closed |= BIT(MX_ROW_PA6);
+        if (!(pa & BIT(7))) closed |= BIT(MX_ROW_PA7);
+        if (!(pa & BIT(8))) closed |= BIT(MX_ROW_PA8);
+        if (!(pb & BIT(7))) closed |= BIT(MX_ROW_PB7);
+        dbg_force_rows = closed;
+        if (dbg_force_cnt == 0) { leds_set(0); shift_out(mx_shift_word(next_col)); }
+        else { shift_out(dbg_force_word); JL_PORTA->OUT |= PA_LEDS; JL_PORTH->OUT |= PH_LEDS; }   /* every LED lit: a visible test of the chain */
+        return;
+    }
     if (!(pa & BIT(0))) closed |= BIT(MX_ROW_PA0);
     if (!(pa & BIT(5))) closed |= BIT(MX_ROW_PA5);
     if (!(pa & BIT(6))) closed |= BIT(MX_ROW_PA6);
@@ -83,6 +102,7 @@ static ___interrupt RAMCODE void mx_isr(void)
     leds_set(0);
     shift_out(mx_shift_word(next_col));
     leds_set(state.led[next_col]);
+    if (cur_col < sizeof dbg_raw) dbg_raw[cur_col] = closed;
     mx_feed_column(&state, cur_col, closed);
     cur_col = next_col;
     next_col = (u8)((next_col + 1) % MX_COLS);
@@ -106,6 +126,32 @@ static void timer_start(u32 us)
 }
 
 mx_state *matrix_state(void) { return &state; }
+
+/* the editor's matrix readout (editor.c has a weak stand-in for builds without the matrix) */
+void editor_port_matrix(uint32_t *ticks, uint32_t *pa, uint32_t *pb, uint8_t *raw, uint32_t ncols)
+{
+    uint32_t i;
+    *ticks = dbg_ticks; *pa = dbg_pa; *pb = dbg_pb;
+    for (i = 0; i < ncols && i < sizeof dbg_raw; i++) raw[i] = dbg_raw[i];
+    if (ncols >= 16) {                            /* the registers, for the readout's second line */
+        raw[11] = dbg_force_rows;
+        raw[12] = (uint8_t)(JL_PORTA->DIR >> 0);  raw[13] = (uint8_t)(JL_PORTA->DIR >> 8);
+        raw[14] = (uint8_t)(JL_PORTA->OUT >> 0);  raw[15] = (uint8_t)(JL_PORTA->OUT >> 8);
+    }
+    if (ncols >= 24) {                            /* the UI's view: events popped, the last one, the backlight flag */
+        extern void ui_debug(u32 *popped, u32 *last, u32 *bl) __attribute__((weak));
+        u32 popped = 0, last = 0, bl = 0;
+        if (ui_debug) ui_debug(&popped, &last, &bl);
+        raw[16] = (uint8_t)popped; raw[17] = (uint8_t)(popped >> 8); raw[18] = (uint8_t)(popped >> 16); raw[19] = (uint8_t)(popped >> 24);
+        raw[20] = (uint8_t)last; raw[21] = (uint8_t)(last >> 8); raw[22] = (uint8_t)bl; raw[23] = 0;
+    }
+}
+
+void editor_port_matrix_force(uint32_t word, uint32_t ticks)
+{
+    dbg_force_word = (u16)word;
+    dbg_force_cnt = (u16)ticks;
+}
 
 void matrix_init(void)
 {

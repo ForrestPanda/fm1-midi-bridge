@@ -42,7 +42,7 @@ void editor_port_status(editor_status *st)
     midi_router *r = bridge_router();
     int i;
     for (i = 0; i < 4; i++) { st->count_in[i] = r->count_in[i]; st->count_out[i] = r->count_out[i]; }
-    st->dropped = r->count_dropped;
+    st->dropped = r->count_dropped + bridge_ble_drops();
     st->usb_ok = (u8)usb_midi_configured(0);
     st->ble_ok = (u8)ble_port_ready();
     st->ble_state = ble_host_active() ? 2 : bt_ble_is_connected() ? 1 : 0;

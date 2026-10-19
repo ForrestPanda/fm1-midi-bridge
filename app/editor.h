@@ -14,6 +14,10 @@
  *   0x0A + from (4 x 7 bits, LSB first)  device log from that absolute offset -> 0x4A + pack7(u32 total, u32 from, bytes)
  *                  up to EDITOR_LOG_CHUNK bytes; total is the count ever written, from the offset actually used
  *   0x0B sysinfo   -> 0x4B + pack7(editor_sysinfo): uptime, heap, task stack margins, health counters
+ *   0x0C matrix    -> 0x4C + pack7(u32 scan ticks, u32 port A in, u32 port B in, 11 x u8 closed rows per column, u8 rows
+ *                  read under the test word, u16 port A DIR, u16 port A OUT): the key matrix as the scan interrupt sees
+ *                  it (zeros on a build without the matrix). With a payload: word (2 x 7 bits, low first) and ticks
+ *                  (2 x 7 bits): put that word on the shift registers for that many scan ticks (a test)
  * Payloads are 8-to-7 packed (upd_pack7). The device checks magic, size and
  * version on set, applies the settings at once and writes them a second later.
  */
@@ -50,3 +54,5 @@ void editor_port_status(editor_status *st);
 void editor_port_send_midi(int port, const uint8_t *bytes, uint32_t n);   /* parse and send to a port */
 const struct logring *editor_port_log(void);                 /* the device log ring */
 void editor_port_sysinfo(editor_sysinfo *si);
+void editor_port_matrix(uint32_t *ticks, uint32_t *pa, uint32_t *pb, uint8_t *raw, uint32_t ncols);   /* weak default: zeros */
+void editor_port_matrix_force(uint32_t word, uint32_t ticks);                                           /* weak default: nothing */

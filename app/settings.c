@@ -127,6 +127,12 @@ int settings_preset_load(int slot)
     return 0;
 }
 
+int settings_preset_peek(int slot, fm1_settings *out)
+{
+    if (slot < 0 || slot >= FM1_PRESET_COUNT) return -1;
+    return load_id((uint16_t)FM1_PRESET_ID(slot), out) ? -1 : 0;
+}
+
 int settings_preset_clear(int slot)
 {
     uint8_t zero[8] = {0};

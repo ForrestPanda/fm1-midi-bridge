@@ -4,7 +4,7 @@
  * and this small status task, which draws a few lines on the panel, writes
  * settings when the editor changes them and keeps the bridge watchdog.
  * Purpose: prove the install path on hardware with the least code that can hang,
- * and get back to stock from it. Package identity FM-1_9B0. */
+ * and get back to stock from it. Package identity FM-1_930. */
 #include "system/includes.h"
 #include "app_config.h"
 #include "os/os_api.h"
@@ -34,7 +34,9 @@ static void minimal_task(void *p)
 {
     u32 n = 0;
 #if FM1_MINIMAL_LCD
-    int lcd_ok = lcd_init() == 0;
+    int safe = health_get()->unclean >= HEALTH_SAFE_BOOTS;              /* the panel guard, as ui.c */
+    int lcd_ok = !safe && lcd_init() == 0;
+    if (safe) fm1_log("safe boot: %u boots in a row never ran clean, the panel is left alone", (unsigned)health_get()->unclean);
     fm1_log("lcd init %s", lcd_ok ? "ok" : "FAILED");
     if (lcd_ok) {
         lcd_fill(0, 0, 240, 240, 0x0000);
@@ -73,6 +75,7 @@ static void minimal_task(void *p)
 #endif
         }
         n++;
+        if (n == 2000) health_mark_clean();      /* 20 s up: not a crash loop */
         os_time_dly(1);                          /* 10 ms */
     }
 }

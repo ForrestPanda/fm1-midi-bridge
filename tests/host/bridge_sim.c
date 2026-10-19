@@ -102,6 +102,7 @@ u16 ble_port_max_packet(void) { return sim.ble_max; }
 int ble_port_send(const u8 *pkt, u16 len)
 {
     int i = sim.ble_out_n;
+    if (sim.ble_full) return 1;
     if (i >= SIM_BLE_OUT_MAX) { memmove(sim.ble_out[0], sim.ble_out[1], sizeof sim.ble_out - sizeof sim.ble_out[0]);
                                  memmove(sim.ble_out_len, sim.ble_out_len + 1, sizeof sim.ble_out_len - sizeof sim.ble_out_len[0]); i = SIM_BLE_OUT_MAX - 1; }
     if (len > BLEMIDI_MAX_PACKET) len = BLEMIDI_MAX_PACKET;

@@ -37,7 +37,12 @@
 #include "debug.h"
 
 #define UART_RING   256
-#define USB_RING    512
+/* USB: the host sends a whole SysEx as one bulk burst (full speed: a 64-byte packet every few
+ * microseconds), and the loop sleeps a 10 ms tick when the ring was last seen empty, so the ring
+ * must hold the longest message whole. The update protocol's 512-byte read reply is 605 wire
+ * bytes = 808 bytes of USB-MIDI packets; 512 here lost its tail on the first unit (2026-10-19:
+ * our step 1 asked three times and never saw a reply). */
+#define USB_RING    2048
 #define BLE_RING    1024
 
 static midi_router router;
@@ -82,22 +87,39 @@ static void sink_usb(void *ctx, const midi_msg *m)
     for (i = 0; i < n; i++) usb_emit(&o[i]);
 }
 
+/* The packet taken from the encoder waits here until the stack accepts it: with a slow link
+ * (a 45 ms connection interval, a clock at 24 per quarter) the stack's buffer fills and a
+ * send is refused; before (2026-10-19, TRS to BLE with a clock on) the refused packet was
+ * dropped, notes and all. Now it is retried every pass, and meanwhile the encoder goes on
+ * filling the next packet, so the batching adapts to the link by itself. Only a packet
+ * refused for BLE_OUT_MAX_AGE_MS, or one in the way of a full encoder, is dropped (counted). */
+#define BLE_OUT_MAX_AGE_MS 250
+static u8 ble_out[BLEMIDI_MAX_PACKET];
+static u16 ble_out_len;
+static u32 ble_out_since, ble_drops;
+
+u32 bridge_ble_drops(void) { return ble_drops; }
+
 static void ble_flush(void)
 {
-    u16 len;
-    const u8 *pkt;
-    if (blemidi_enc_empty(&ble_enc)) return;
-    pkt = blemidi_enc_take(&ble_enc, &len);
-    ble_pending = 0;
-    if (ble_port_ready()) {
-        ble_port_send(pkt, len);        /* dropped if the stack's buffer is full */
+    if (!ble_out_len) {
+        const u8 *pkt;
+        if (blemidi_enc_empty(&ble_enc)) return;
+        pkt = blemidi_enc_take(&ble_enc, &ble_out_len);
+        memcpy(ble_out, pkt, ble_out_len);
+        ble_out_since = timer_get_ms();
+        ble_pending = 0;
     }
+    if (!ble_port_ready()) { ble_out_len = 0; return; }           /* no link: nothing to wait for */
+    if (ble_port_send(ble_out, ble_out_len) == 0) ble_out_len = 0;
+    else if (timer_get_ms() - ble_out_since > BLE_OUT_MAX_AGE_MS) { ble_out_len = 0; ble_drops++; }
 }
 
 static void ble_add(uint32_t ts, const midi_msg *m)
 {
     int r = blemidi_enc_add(&ble_enc, ts, m);
     if (r == 1) { ble_pending = 1; return; }
+    if (ble_out_len) { ble_out_len = 0; ble_drops++; }           /* the encoder is full and its predecessor still waits: the oldest goes */
     ble_flush();
     r = blemidi_enc_add(&ble_enc, ts, m);
     if (r == 1) ble_pending = 1;
@@ -417,7 +439,7 @@ int bridge_step(void)
     link_watch();
     busy |= link_panic_step();
     busy |= panic_step();
-    if (ble_pending) ble_flush();                  /* one notification per burst */
+    if (ble_pending || ble_out_len) ble_flush();   /* one notification per burst; a refused one retried */
     fm1_update_poll();                             /* handshake replies; a session blocks here */
     return busy;
 }

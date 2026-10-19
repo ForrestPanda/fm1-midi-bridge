@@ -13,8 +13,11 @@ The FM-1 has **no TRS MIDI OUT**: the 3.5 mm jack is MIDI IN only (see
 `docs/hardware.md`). So "BLE -> TRS" is not possible without a hardware mod;
 "BLE -> USB" is the reverse direction this project targets.
 
-Status: **no hardware yet**. Nothing here has run on an FM-1. The whole application
-builds and packages; the MIDI codecs, the router and the update entry pass host tests.
+Status: **runs on the first FM-1 since 2026-10-19** (`docs/recovery.md`, "The bridge on the
+first unit"): the full build boots, shows its UI on the panel, enumerates on USB, advertises BLE
+MIDI, takes keys, buttons and knobs, carries BLE MIDI from a phone to USB, and installs and
+uninstalls through its own update entry. TRS MIDI in and the USB/TRS to BLE directions are
+still to be exercised on the unit. The MIDI codecs, the router and the update entry pass host tests.
 
 ## Build
 
@@ -27,12 +30,12 @@ ulimit -n 8192 && make -C app -j8         # build/fm1bridge.elf and build/app.bi
 ```
 sh tools/package.sh            # build/fm1bridge.fwsc (needs Felucca built next door, for its loader)
 sh tools/install.sh --info     # identity of a connected FM-1
-sh tools/install.sh            # install the package (not before milestone 2's checks)
+sh tools/fm1_safe_install.sh build/fm1bridge.fwsc   # install (docs/recovery.md); tools/install.sh is the bare installer
 ```
 
 The first thing to flash on a real unit is the **minimal build**: no radio, no key
 matrix, no UI task, just USB MIDI, TRS in, the updater, the editor and the log.
-Identity `FM-1_9B0`, so `--info` tells it apart.
+Identity `FM-1_930`, so `--info` tells it apart.
 ```
 make -C app -j8 MINIMAL=1      # build/minimal/app.bin
 sh tools/package.sh --minimal  # build/fm1bridge-minimal.fwsc
@@ -70,6 +73,10 @@ for the FM-1 pin map and the update protocol. No Felucca code is copied.
 | `app/usb/` | USB-MIDI device class on the SDK USB stack, and the SDK composite-device file with a MIDI branch (Apache-2.0) |
 | `tools/fm1pkg_make.py` | our fork of Felucca's packager (GPL-3 build tool): VM region ends at 0xE0000 |
 | `tools/package.sh`, `tools/install.sh` | packaging with the fork, install with Felucca's installer (external GPL tool) |
+| `tools/fm1_safe_install.sh` | the first install on a unit: identity, soft key, full dump and survey, then the install |
+| `tools/fm1_install_paced.py` | the installer with the host's SysEx paced (for a firmware whose USB ring is too small for a reply) |
+| `tools/fm1_editor.py` | the web editor's questions from the shell: info, counters, heap and stack margins, the device log |
+| `tools/dongle/` | the mask-ROM USB key: `stm32f4disco/` (verified on the first unit), `fm1_key.py` (RP2040 MicroPython, untested) |
 | `tools/mkapp.sh` | ELF -> `app.bin` (the four sections the SDK packer concatenates) |
 | `tools/fm1_recover.py`, `tools/fm1_flash.sh` | soft key / vendor request into the mask-ROM download mode; whole-flash dump and restore through jl-uboot-tool |
 | `tools/mkfont.py` | renders DejaVu Sans Mono into `app/ui/font.h` (8x14, 1 bpp) |
@@ -100,21 +107,22 @@ power saving. Example screenshots, rendered from the real font and layout rules 
 
 ![All pages](docs/ui-examples/all-pages.png)
 
-## Footprint (build of 2026-10-12)
+## Footprint (build of 2026-10-16)
 
 | | full build | minimal build | of |
 | --- | --- | --- | --- |
-| `app.bin` (flash) | 352,640 B (344 KB), 61% | 205,232 B (200 KB), 35% | 581,564 B app slot |
-| `.text` | 336,320 B | 191,136 B | |
-| static RAM, initialised (`.ram0_data`) | 16,288 B | 14,064 B | includes the matrix ISR code copied to RAM |
-| static RAM, zeroed (`.ram0_bss`) | 74,208 B | 67,216 B | ours plus the SDK's |
-| static RAM total | 90,496 B (88 KB) | 81,280 B (79 KB) | 512 KB internal RAM; the rest is SDK heap, Bluetooth and task stacks |
+| `app.bin` (flash) | 364,256 B (356 KB), 63% | 205,296 B (200 KB), 35% | 581,564 B app slot |
+| `.text` | 347,872 B | 191,200 B | |
+| static RAM, initialised (`.ram0_data`) | 16,352 B | 14,064 B | includes the matrix ISR code copied to RAM |
+| static RAM, zeroed (`.ram0_bss`) | 80,608 B | 69,072 B | ours plus the SDK's |
+| static RAM total | 96,960 B (95 KB) | 83,136 B (81 KB) | 512 KB internal RAM; the rest is SDK heap, Bluetooth and task stacks |
 
 Largest things of ours in RAM: the recorder (2048 events, 16 KB), the device log
 ring (4 KB), the two note collision guards (4 KB), the panel text strip (6.7 KB),
-the BLE host and peripheral ATT buffers (about 1.5 KB each), the update staging
-buffers (3 KB), the MIDI log rings (1.5 KB) and the message queues between tasks
-(2 KB). The bridge and UI tasks each get a 1024-word stack; the minimal build's
+the MIDI log rings (64 lines, 6 KB), the BLE host and peripheral ATT buffers (about
+1.5 KB each), the update staging buffers (3 KB) and the message queues between tasks
+(2 KB). The 16x28 font of the Perform page is 5.3 KB of flash (the minimal build
+drops it). The bridge and UI tasks each get a 1024-word stack; the minimal build's
 status task 768 words. For comparison, the SDK's bare BLE demo is 283 KB of flash
 and 25 KB of static RAM, so the whole bridge, UI and learner feature set costs about
 60 KB of flash and 65 KB of RAM on top of the stack. The minimal build still links

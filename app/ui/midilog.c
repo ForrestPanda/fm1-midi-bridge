@@ -9,22 +9,26 @@
 #define COLS   (LCD_W / 8)          /* 30 with the 8x14 font */
 #define ROWS   (LCD_H / 14)         /* 17 */
 #define LINES  (ROWS - 1)
+#define RING   MIDILOG_RING
 
-static char ring[LINES][COLS + 1];
-static u32 head;                    /* lines written so far */
-static u32 shown;                   /* lines drawn so far */
+static char ring[RING][COLS + 1];
+static u32 head;                    /* lines written so far; line k lives in ring[k % RING] while k >= head - RING */
+static u32 view_end;                /* the line after the bottom row while scrolled or paused; 0 = follow head */
+static u8 paused;
 static char status[COLS + 1], status_shown[COLS + 1];
-static volatile u8 dirty;
+static volatile u8 dirty;           /* rows and status to redraw */
+static volatile u8 dirty_st;        /* only the status line: lines arrived under a held view */
 static u8 ready;
 static u8 decoded;                  /* 0 = raw bytes, 1 = decoded text */
-static u8 raw_ring[LINES][2 + MIDI_SYSEX_CHUNK]; /* [port|flags, len, bytes...] so the view can be switched */
+static u8 raw_ring[RING][2 + MIDI_SYSEX_CHUNK]; /* [port|flags, len, bytes...] so the view can be switched */
 
 static const u16 C_BG = 0x0000, C_TXT = 0xFFFF, C_DIM = 0x8410, C_STAT = 0x07E0;
+static const u16 C_TITLE_BG = RGB565(0, 72, 112);           /* the UI's title band (ui.c) */
 
 void midilog_init(void)
 {
     memset(ring, 0, sizeof ring);
-    head = shown = 0;
+    head = 0; view_end = 0; paused = 0;
     strcpy(status, "FM-1 MIDI bridge");
     status_shown[0] = 0;
     ready = 1;                                /* the UI task initialises the panel */
@@ -57,15 +61,16 @@ static void format(char *line, int port, int out, const midi_msg *m)
 
 static void store(int port, int out, const midi_msg *m)
 {
-    u8 *raw = raw_ring[head % LINES];
+    u8 *raw = raw_ring[head % RING];
     if (m->kind == MIDI_KIND_SYSEX && !(m->flags & MIDI_SYSEX_START))
         return;                                         /* only the first chunk of a SysEx */
     raw[0] = (u8)(port | (out ? 0x80 : 0) | (m->kind << 4) | ((m->flags & 3) << 6));
     raw[1] = m->len;
     memcpy(raw + 2, m->b, m->len);
-    format(ring[head % LINES], port, out, m);
+    format(ring[head % RING], port, out, m);
     head++;
-    dirty = 1;
+    if (!view_end) dirty = 1;                           /* a held view stays as it is; its count moves */
+    else dirty_st = 1;
 }
 
 void midilog_add(int port, const midi_msg *m) { store(port, 0, m); }
@@ -73,23 +78,50 @@ void midilog_add_out(int port, const midi_msg *m) { store(port, 1, m); }
 
 void midilog_set_decoded(int on)
 {
-    u32 k, first = head > LINES ? head - LINES : 0;
+    u32 k, first = head > RING ? head - RING : 0;
     decoded = (u8)on;
-    for (k = first; k < head; k++) {                    /* re-render what is on screen */
-        const u8 *raw = raw_ring[k % LINES];
+    for (k = first; k < head; k++) {                    /* re-render what the ring holds */
+        const u8 *raw = raw_ring[k % RING];
         midi_msg m;
         m.kind = (raw[0] >> 4) & 3; m.flags = (raw[0] >> 6) & 3; m.len = raw[1];
         memcpy(m.b, raw + 2, m.len);
-        format(ring[k % LINES], raw[0] & 0x0F, raw[0] & 0x80, &m);
+        format(ring[k % RING], raw[0] & 0x0F, raw[0] & 0x80, &m);
     }
     midilog_invalidate();
 }
 
 int midilog_decoded(void) { return decoded; }
 
+/* the oldest line index whose window of LINES still lies inside the ring */
+static u32 lowest_end(void)
+{
+    u32 low = head < LINES ? head : LINES;
+    if (head > RING && head - RING + LINES > low) low = head - RING + LINES;
+    return low;
+}
+
+void midilog_scroll(int lines)
+{
+    u32 end = view_end ? view_end : head, low = lowest_end();
+    if (lines < 0) end = end > (u32)(-lines) ? end + lines : 0;
+    else end += (u32)lines;
+    if (end < low) end = low;
+    if (end > head) end = head;
+    view_end = (end >= head && !paused) ? 0 : end;
+    midilog_invalidate();
+}
+
+void midilog_pause(int on)
+{
+    paused = (u8)(on != 0);
+    view_end = paused ? head : 0;
+    midilog_invalidate();
+}
+
+int midilog_paused(void) { return paused; }
+
 void midilog_invalidate(void)
 {
-    shown = 0;
     status_shown[0] = 0;
     dirty = 1;
 }
@@ -112,40 +144,49 @@ void midilog_status_from(const midi_router *r, int usb_ok, int ble_ok)
     if (strcmp(s, status) != 0) midilog_status(s);
 }
 
-static void draw_line(u16 row, const char *text, u16 fg)
+static void draw_line(u16 row, const char *text, u16 fg, u16 bg)
 {
     char buf[COLS + 1];
     int n = snprintf(buf, sizeof buf, "%s", text);
     while (n < COLS) buf[n++] = ' ';               /* pad: overwrites the old line */
     buf[COLS] = 0;
-    lcd_text(0, row, buf, fg, C_BG);
+    lcd_text(0, row, buf, fg, bg);
 }
 
 void midilog_draw(void)
 {
-    u32 first, i;
-    if (!ready || !dirty) return;
+    u32 end, first, i, low;
+    char st[COLS + 1];
+    if (!ready || (!dirty && !dirty_st)) return;
+    end = view_end ? view_end : head;
+    low = lowest_end();
+    if (end < low) end = low;                      /* the ring moved on under a held view */
+    if (end > head) end = head;
+    /* the status line, with the view's state on the right (no printf precision: the
+     * SDK's printf is minimal) */
+    {
+        int n = snprintf(st, sizeof st, "%s", status);
+        if (paused || (view_end && head > end)) {
+            char tail[12];
+            int tn;
+            if (paused) snprintf(tail, sizeof tail, "PAUSED");
+            else snprintf(tail, sizeof tail, "^%u", (unsigned)(head - end));
+            tn = (int)strlen(tail);
+            if (n > COLS - tn - 1) n = COLS - tn - 1;
+            while (n < COLS - tn) st[n++] = ' ';
+            memcpy(st + n, tail, (size_t)tn + 1);
+        }
+    }
+    if (strcmp(st, status_shown) != 0) {
+        draw_line(0, st, (paused || view_end) ? C_TXT : C_STAT, C_TITLE_BG);
+        strcpy(status_shown, st);
+    }
+    dirty_st = 0;
+    if (!dirty) return;
     dirty = 0;
-    if (strcmp(status, status_shown) != 0) {
-        draw_line(0, status, C_STAT);
-        strcpy(status_shown, status);
+    first = end > LINES ? end - LINES : 0;
+    for (i = 0; i < LINES; i++) {                  /* newest at the bottom; all rows (no hardware scroll) */
+        u32 k = first + i;
+        draw_line((u16)(1 + i), k < end ? ring[k % RING] : "", k + 1 == end ? C_TXT : C_DIM, C_BG);
     }
-    if (head == shown) return;
-    if (head - shown >= LINES || head <= LINES) {
-        /* redraw everything: newest at the bottom */
-        first = head > LINES ? head - LINES : 0;
-        for (i = 0; i < LINES; i++) {
-            u32 k = first + i;
-            draw_line((u16)(1 + i), k < head ? ring[k % LINES] : "", k + 1 == head ? C_TXT : C_DIM);
-        }
-    } else {
-        /* scrolled by a few lines: redraw all rows (no hardware scroll with a
-         * top-left origin MADCTL); cheap enough at 16 rows of 30 cells */
-        first = head - LINES;
-        for (i = 0; i < LINES; i++) {
-            u32 k = first + i;
-            draw_line((u16)(1 + i), ring[k % LINES], k + 1 == head ? C_TXT : C_DIM);
-        }
-    }
-    shown = head;
 }

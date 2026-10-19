@@ -24,7 +24,7 @@ export PATH:=$(TOOL_DIR):$(PATH)
 MINIMAL  ?= 0
 ifeq ($(MINIMAL), 1)
 OUT_DIR   := $(abspath $(PROJ)/..)/build/minimal
-EXT_CFLAGS += -DFM1_MINIMAL=1 -DUPD_IDENTITY='"FM-1_9B0"'
+EXT_CFLAGS += -DFM1_MINIMAL=1 -DUPD_IDENTITY='"FM-1_930"'
 else
 OUT_DIR   := $(abspath $(PROJ)/..)/build
 endif

@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
-/* The pages. Layout: 30 columns x 17 rows (8x14 font on 240x240). */
+/* The pages. Layout: 30 columns x 17 rows (8x14 font on 240x240); the Perform page
+ * uses the 16x28 font (15 x 8). Every menu page is a ui_menu table; the custom pages
+ * (status, log, statistics, reference, scan, input test, perform) draw rows themselves. */
 #include "system/includes.h"
 #include "app_config.h"
 #include "os/os_api.h"
@@ -35,6 +37,20 @@ extern void usb_port_apply(void);
 
 static void mark(void) { settings_mark_dirty(); }
 static void onoff(char *b, int n, int v) { snprintf(b, n, "%s", v ? "on" : "off"); }
+/* No "%+d" anywhere on the device: the SDK's printf does not know the '+' flag and
+ * prints a bare "d" (seen in fm1-emu on this very row). The sign is spelt out. */
+static const char *plus(int v) { return v < 0 ? "" : "+"; }
+static const char *to_name(u8 t) { return t == 1 ? "USB" : t == 2 ? "BLE" : "USB+BLE"; }
+/* " bat [##..] 3.87V  ECO" for the footers; 1 when the battery is low */
+static int battery_line(char *b, int n)
+{
+    char bar[8];
+    u16 mv = ui_battery_mv();
+    ui_battery_bar(bar, sizeof bar);
+    snprintf(b, n, " bat %s %u.%02uV%s", bar, mv / 1000, (mv % 1000) / 10,
+             settings_get()->ble_link_mode == BLE_LINK_POWER_SAVING ? "  ECO" : "");
+    return ui_battery_low();
+}
 
 /* ------------------------------------------------------------------ splash */
 static u32 splash_ms;
@@ -61,7 +77,8 @@ static void go_usb(void)     { ui_goto(PAGE_USB); }
 static void go_filters(void) { ui_goto(PAGE_FILTERS); }
 static void go_keyboard(void) { ui_goto(PAGE_KEYBOARD); }
 static void go_composer(void) { ui_goto(PAGE_COMPOSER); }
-static void go_connections(void) { ui_goto(PAGE_CONNECTIONS); }
+static void go_connections(void) { ui_home(); }
+static void go_perform(void) { ui_goto(PAGE_PERFORM); }
 static void go_stats(void) { ui_goto(PAGE_STATS); }
 static void go_recorder(void) { ui_goto(PAGE_RECORDER); }
 static void go_reference(void) { ui_goto(PAGE_REFERENCE); }
@@ -69,45 +86,55 @@ static void go_clock(void) { ui_goto(PAGE_CLOCK); }
 static void go_buttons(void) { ui_goto(PAGE_BUTTONS); }
 static void go_display(void) { ui_goto(PAGE_DISPLAY); }
 static void go_system(void)  { ui_goto(PAGE_SYSTEM); }
+static void go_presets(void) { ui_goto(PAGE_PRESETS); }
 static const ui_item main_items[] = {
-    { "Connections",   UI_SUBMENU, NULL, NULL, go_connections, NULL },
+    { "Status",        UI_SUBMENU, NULL, NULL, go_connections, NULL },
+    { "Perform",       UI_SUBMENU, NULL, NULL, go_perform, NULL },
+    { "",              UI_INFO,    NULL, NULL, NULL, NULL },
+    { "SETUP",         UI_INFO,    NULL, NULL, NULL, NULL },
+    { "Bluetooth",     UI_SUBMENU, NULL, NULL, go_ble,     NULL },
+    { "USB",           UI_SUBMENU, NULL, NULL, go_usb,     NULL },
     { "Routing",       UI_SUBMENU, NULL, NULL, go_routes,  NULL },
+    { "MIDI filters",  UI_SUBMENU, NULL, NULL, go_filters, NULL },
+    { "Keyboard",      UI_SUBMENU, NULL, NULL, go_keyboard, NULL },
+    { "Button MIDI",   UI_SUBMENU, NULL, NULL, go_buttons, NULL },
+    { "Presets",       UI_SUBMENU, NULL, NULL, go_presets, NULL },
+    { "",              UI_INFO,    NULL, NULL, NULL, NULL },
+    { "BENCH",         UI_INFO,    NULL, NULL, NULL, NULL },
     { "MIDI log",      UI_SUBMENU, NULL, NULL, go_log,     NULL },
     { "Composer",      UI_SUBMENU, NULL, NULL, go_composer, NULL },
     { "Statistics",    UI_SUBMENU, NULL, NULL, go_stats, NULL },
     { "Recorder",      UI_SUBMENU, NULL, NULL, go_recorder, NULL },
-    { "MIDI reference", UI_SUBMENU, NULL, NULL, go_reference, NULL },
     { "Clock master",  UI_SUBMENU, NULL, NULL, go_clock, NULL },
-    { "Keyboard",      UI_SUBMENU, NULL, NULL, go_keyboard, NULL },
-    { "Button MIDI",   UI_SUBMENU, NULL, NULL, go_buttons, NULL },
-    { "Bluetooth",     UI_SUBMENU, NULL, NULL, go_ble,     NULL },
-    { "USB",           UI_SUBMENU, NULL, NULL, go_usb,     NULL },
-    { "MIDI filters",  UI_SUBMENU, NULL, NULL, go_filters, NULL },
+    { "MIDI reference", UI_SUBMENU, NULL, NULL, go_reference, NULL },
+    { "",              UI_INFO,    NULL, NULL, NULL, NULL },
+    { "DEVICE",        UI_INFO,    NULL, NULL, NULL, NULL },
     { "Display",       UI_SUBMENU, NULL, NULL, go_display, NULL },
     { "System",        UI_SUBMENU, NULL, NULL, go_system,  NULL },
 };
-static ui_menu main_menu = { main_items, 15, 0, 0 };
-static u16 bat_mv;
+static char main_footer[UI_COLS + 1];
+static ui_menu main_menu = { main_items, 23, 0, 0, main_footer };
 static void main_draw(void)
 {
-    char l[UI_COLS + 1];
+    int low = battery_line(main_footer, sizeof main_footer);
     ui_menu_draw(&main_menu, "FM-1 MIDI bridge");
-    snprintf(l, sizeof l, "USB:%s BLE:%s%s BAT:%u.%02uV", usb_midi_configured(0) ? "ok" : "--",
-             ble_port_ready() ? "ok" : bt_ble_is_connected() ? "con" : "adv",
-             settings_get()->ble_link_mode == BLE_LINK_POWER_SAVING ? " ECO" : "", bat_mv / 1000, (bat_mv % 1000) / 10);
-    ui_row(UI_ROWS - 1, l, UI_C_DIM, UI_C_BG);
+    if (low) ui_row(UI_ROWS - 1, main_footer, UI_C_WARN, UI_C_BG);
 }
 static void main_event(const mx_event *e) { ui_menu_event(&main_menu, e); }
-static void main_tick(void)
-{
-    static u32 last;
-    u32 now = timer_get_ms();
-    if (now - last >= 1000) { last = now; bat_mv = (u16)adc_get_voltage(AD_CH_PB01); ui_invalidate(); }
-}
+static void main_tick(void) { static u8 k; if (++k >= 10) { k = 0; ui_refresh(); } }
 static const ui_page page_main = { "FM-1 MIDI bridge", NULL, main_draw, main_event, main_tick };
 
 /* ------------------------------------------------------------------ routes */
-static void route_val(char *b, int n, int src, int dst) { onoff(b, n, router_enabled(bridge_router(), src, dst)); }
+/* one row per route: OCT+ toggles it, hold OCT+ opens its options; the value shows
+ * the switch and a mark for every option that is not the default */
+static void route_val(char *b, int n, int src, int dst)
+{
+    midi_router *r = bridge_router();
+    const route_opt *o = router_opt(r, src, dst);
+    snprintf(b, n, "%s%s%s%s%s", router_enabled(r, src, dst) ? "on" : "off",
+             o->channels != 0xFFFF ? " ch" : "", o->remap ? " map" : "",
+             !(o->flags & ROUTE_OPT_CLOCK) ? " noclk" : "", !(o->flags & ROUTE_OPT_SYSEX) ? " nosx" : "");
+}
 static void route_adj(int src, int dst)
 {
     midi_router *r = bridge_router();
@@ -142,27 +169,24 @@ static void o_ku(void) { go_opt(MIDI_PORT_KBD, MIDI_PORT_USB); }
 static void o_kb(void) { go_opt(MIDI_PORT_KBD, MIDI_PORT_BLE); }
 static void go_inputs(void) { ui_goto(PAGE_INPUTS); }
 static const ui_item routes_items[] = {
-    { "TRS in  -> BLE out", UI_TOGGLE, v_tb, a_tb, NULL, NULL },
-    { "TRS in  -> USB out", UI_TOGGLE, v_tu, a_tu, NULL, NULL },
-    { "USB in  -> BLE out", UI_TOGGLE, v_ub, a_ub, NULL, NULL },
-    { "BLE in  -> USB out", UI_TOGGLE, v_bu, a_bu, NULL, NULL },
-    { "Keys    -> USB out", UI_TOGGLE, v_ku, a_ku, NULL, NULL },
-    { "Keys    -> BLE out", UI_TOGGLE, v_kb, a_kb, NULL, NULL },
-    { "",                   UI_INFO,   NULL, NULL, NULL, NULL },
-    { "Options TRS->BLE",   UI_SUBMENU, NULL, NULL, o_tb, NULL },
-    { "Options TRS->USB",   UI_SUBMENU, NULL, NULL, o_tu, NULL },
-    { "Options USB->BLE",   UI_SUBMENU, NULL, NULL, o_ub, NULL },
-    { "Options BLE->USB",   UI_SUBMENU, NULL, NULL, o_bu, NULL },
-    { "Options Keys->USB",  UI_SUBMENU, NULL, NULL, o_ku, NULL },
-    { "Options Keys->BLE",  UI_SUBMENU, NULL, NULL, o_kb, NULL },
-    { "Inputs",             UI_SUBMENU, NULL, NULL, go_inputs, NULL },
-    { "",                   UI_INFO,   NULL, NULL, NULL, NULL },
-    { "TRS in/out",         UI_INFO,   v_cnt_trs, NULL, NULL, NULL },
-    { "USB in/out",         UI_INFO,   v_cnt_usb, NULL, NULL, NULL },
-    { "BLE in/out",         UI_INFO,   v_cnt_ble, NULL, NULL, NULL },
+    { "TRS -> BLE",  UI_TOGGLE, v_tb, a_tb, NULL, NULL, o_tb },
+    { "TRS -> USB",  UI_TOGGLE, v_tu, a_tu, NULL, NULL, o_tu },
+    { "USB -> BLE",  UI_TOGGLE, v_ub, a_ub, NULL, NULL, o_ub },
+    { "BLE -> USB",  UI_TOGGLE, v_bu, a_bu, NULL, NULL, o_bu },
+    { "Keys -> USB", UI_TOGGLE, v_ku, a_ku, NULL, NULL, o_ku },
+    { "Keys -> BLE", UI_TOGGLE, v_kb, a_kb, NULL, NULL, o_kb },
+    { "",            UI_INFO,   NULL, NULL, NULL, NULL },
+    { "Inputs",      UI_SUBMENU, NULL, NULL, go_inputs, NULL },
+    { "",            UI_INFO,   NULL, NULL, NULL, NULL },
+    { "ch = channel filter, map =", UI_INFO, NULL, NULL, NULL, NULL },
+    { "remap, noclk / nosx = blocked", UI_INFO, NULL, NULL, NULL, NULL },
+    { "",            UI_INFO,   NULL, NULL, NULL, NULL },
+    { "TRS in/out",  UI_INFO,   v_cnt_trs, NULL, NULL, NULL },
+    { "USB in/out",  UI_INFO,   v_cnt_usb, NULL, NULL, NULL },
+    { "BLE in/out",  UI_INFO,   v_cnt_ble, NULL, NULL, NULL },
 };
-static ui_menu routes_menu = { routes_items, 18, 0, 0 };
-static void routes_enter(void) { ui_menu_reset(&routes_menu); }
+static ui_menu routes_menu = { routes_items, 15, 0, 0, "OCT+:toggle hold:options" };
+static void routes_enter(void) { ui_menu_enter(&routes_menu); }
 static void routes_draw(void) { ui_menu_draw(&routes_menu, "Routing"); }
 static void routes_event(const mx_event *e) { ui_menu_event(&routes_menu, e); }
 static void routes_tick(void) { static u8 k; if (++k >= 5) { k = 0; ui_invalidate(); } }
@@ -199,9 +223,9 @@ static const ui_item opt_items[] = {
     { "Clock / transport",UI_TOGGLE, v_oclk,   a_oclk,   NULL, NULL },
     { "SysEx",            UI_TOGGLE, v_osx,    a_osx,    NULL, NULL },
 };
-static ui_menu opt_menu = { opt_items, 4, 0, 0 };
+static ui_menu opt_menu = { opt_items, 4, 0, 0, NULL };
 static char opt_title[UI_COLS + 1];
-static void opt_enter(void) { ui_menu_reset(&opt_menu); snprintf(opt_title, sizeof opt_title, "%s -> %s", router_port_name(opt_src), router_port_name(opt_dst)); }
+static void opt_enter(void) { ui_menu_enter(&opt_menu); snprintf(opt_title, sizeof opt_title, "%s -> %s", router_port_name(opt_src), router_port_name(opt_dst)); }
 static void opt_draw(void) { ui_menu_draw(&opt_menu, opt_title); }
 static void opt_event(const mx_event *e) { ui_menu_event(&opt_menu, e); }
 static const ui_page page_route_opt = { "Route", opt_enter, opt_draw, opt_event, NULL };
@@ -209,29 +233,28 @@ static const ui_page page_route_opt = { "Route", opt_enter, opt_draw, opt_event,
 /* ------------------------------------------------------------------ inputs (TRS transform) */
 static const char *const vel_names[VEL_CURVE_COUNT] = { "linear", "soft", "hard", "fixed" };
 static void in_store(void) { settings_apply_router(settings_get(), bridge_router()); mark(); }
-/* No "%+d" anywhere on the device: the SDK's printf does not know the '+' flag and
- * prints a bare "d" (seen in fm1-emu on this very row). The sign is spelt out. */
-static const char *plus(int v) { return v < 0 ? "" : "+"; }
 static void v_itr(char *b, int n) { int t = settings_get()->input[MIDI_PORT_TRS].transpose; snprintf(b, n, "%s%d", plus(t), t); }
-static void a_itr(int d) { int t = settings_get()->input[MIDI_PORT_TRS].transpose + (d > 0 ? 1 : -1); if (t < -24) t = -24; if (t > 24) t = 24; settings_get()->input[MIDI_PORT_TRS].transpose = (s8)t; in_store(); }
+static void a_itr(int d) { int t = settings_get()->input[MIDI_PORT_TRS].transpose + d; if (t < -24) t = -24; if (t > 24) t = 24; settings_get()->input[MIDI_PORT_TRS].transpose = (s8)t; in_store(); }
 static void v_ivc(char *b, int n) { u8 c = settings_get()->input[MIDI_PORT_TRS].vel_curve; snprintf(b, n, "%s", vel_names[c < VEL_CURVE_COUNT ? c : 0]); }
 static void a_ivc(int d) { int c = settings_get()->input[MIDI_PORT_TRS].vel_curve + (d > 0 ? 1 : VEL_CURVE_COUNT - 1); settings_get()->input[MIDI_PORT_TRS].vel_curve = (u8)(c % VEL_CURVE_COUNT); in_store(); }
 static void v_ivf(char *b, int n) { snprintf(b, n, "%d", settings_get()->input[MIDI_PORT_TRS].vel_fixed); }
-static void a_ivf(int d) { int v = settings_get()->input[MIDI_PORT_TRS].vel_fixed + (d > 0 ? 5 : -5); if (v < 1) v = 1; if (v > 127) v = 127; settings_get()->input[MIDI_PORT_TRS].vel_fixed = (u8)v; in_store(); }
+static void a_ivf(int d) { int v = settings_get()->input[MIDI_PORT_TRS].vel_fixed + d; if (v < 1) v = 1; if (v > 127) v = 127; settings_get()->input[MIDI_PORT_TRS].vel_fixed = (u8)v; in_store(); }
 static const ui_item in_items[] = {
     { "TRS transpose",       UI_ENUM, v_itr, a_itr, NULL, NULL },
     { "TRS velocity curve",  UI_ENUM, v_ivc, a_ivc, NULL, NULL },
     { "TRS fixed velocity",  UI_ENUM, v_ivf, a_ivf, NULL, NULL },
 };
-static ui_menu in_menu = { in_items, 3, 0, 0 };
-static void in_enter(void) { ui_menu_reset(&in_menu); }
+static ui_menu in_menu = { in_items, 3, 0, 0, NULL };
+static void in_enter(void) { ui_menu_enter(&in_menu); }
 static void in_draw(void) { ui_menu_draw(&in_menu, "Inputs"); }
 static void in_event(const mx_event *e) { ui_menu_event(&in_menu, e); }
 static const ui_page page_inputs = { "Inputs", in_enter, in_draw, in_event, NULL };
 
 /* ------------------------------------------------------------------ log */
+/* OCT+ raw/decoded, SELECT scrolls back through the 64-line ring, hold OCT+ holds the
+ * view (PLAY has a MIDI job by default, so it is not the pause key), OCT- leaves. */
 static void log_enter(void) { midilog_invalidate(); }
-static void log_draw(void) { midilog_draw(); }
+static void log_draw(void) { midilog_invalidate(); midilog_draw(); }
 static void log_tick(void)
 {
     midilog_status_from(bridge_router(), usb_midi_configured(0), ble_midi_ready());
@@ -239,8 +262,10 @@ static void log_tick(void)
 }
 static void log_event(const mx_event *e)
 {
+    if (e->type == MX_EV_ENC && (e->id == MX_ENC_SELECT || e->id == MX_ENC_PRESETS)) { midilog_scroll(e->delta > 0 ? 4 : -4); return; }
+    if (e->type == MX_EV_BTN_HOLD && e->id == MX_BTN_OCT_PLUS) { midilog_pause(!midilog_paused()); return; }
     if (e->type != MX_EV_BTN_UP || (e->flags & MX_UP_WAS_HELD)) return;
-    if (e->id == MX_BTN_OCT_MINUS) ui_back();
+    if (e->id == MX_BTN_OCT_MINUS) { if (midilog_paused()) midilog_pause(0); ui_back(); }
     if (e->id == MX_BTN_OCT_PLUS) midilog_set_decoded(!midilog_decoded());
 }
 static const ui_page page_log = { "MIDI log", log_enter, log_draw, log_event, log_tick };
@@ -259,6 +284,7 @@ static void comp_send(void)
 {
     comp_send_spec(&comp);
     if (comp.kind == COMPOSE_NOTE) note_off_due = timer_get_ms() + 250;
+    ui_toast("sent");
 }
 static void comp_tick(void)
 {
@@ -291,20 +317,24 @@ static void a_cd2(int d) { int v = comp.d2 + d; if (v < 0) v = 0; if (v > 127) v
 static void v_cport(char *b, int n) { snprintf(b, n, "%s", compose_port_name(comp.port)); }
 static void a_cport(int d) { comp.port = (u8)((comp.port + (d > 0 ? 1 : COMPOSE_PORT_COUNT - 1)) % COMPOSE_PORT_COUNT); }
 static void v_cprev(char *b, int n) { midi_msg m; if (compose_build(&comp, &m)) midi_decode(&m, b, n); else snprintf(b, n, "invalid"); }
+/* a favourite that was never stored is all zeros (a note C-1 on channel 1 to nowhere
+ * useful): shown as empty, sends nothing */
+static int fav_empty(const compose_spec *f) { return f->kind >= COMPOSE_KIND_COUNT || (f->kind == 0 && f->channel == 0 && f->d1 == 0 && f->d2 == 0 && f->port == 0); }
 static void fav_text(char *b, int n, int i)
 {
     const compose_spec *f = (const compose_spec *)&settings_get()->fav[i];
     midi_msg m;
-    if (f->kind >= COMPOSE_KIND_COUNT || !compose_build(f, &m)) { snprintf(b, n, "empty"); return; }
+    if (fav_empty(f) || !compose_build(f, &m)) { snprintf(b, n, "empty"); return; }
     midi_decode(&m, b, n);
 }
-static void fav_send(int i) { const compose_spec *f = (const compose_spec *)&settings_get()->fav[i]; if (f->kind < COMPOSE_KIND_COUNT) comp_send_spec(f); }
-static void fav_store(int i) { memcpy(&settings_get()->fav[i], &comp, sizeof comp); mark(); }
+static void fav_send(int i) { const compose_spec *f = (const compose_spec *)&settings_get()->fav[i]; if (!fav_empty(f)) { comp_send_spec(f); ui_toast("sent"); } }
+static void fav_store(int i) { static const char *const msg[4] = { "stored in Fav 1", "stored in Fav 2", "stored in Fav 3", "stored in Fav 4" }; memcpy(&settings_get()->fav[i], &comp, sizeof comp); mark(); ui_toast(msg[i]); }
 #define FAV(N) \
     static void v_f##N(char *b, int n) { fav_text(b, n, N); } \
     static void s_f##N(void) { fav_send(N); } \
     static void t_f##N(void) { fav_store(N); }
 FAV(0) FAV(1) FAV(2) FAV(3)
+/* a favourite's row: OCT+ sends it, hold OCT+ stores the current message in it */
 static const ui_item comp_items[] = {
     { "Kind",      UI_ENUM,   v_ckind, a_ckind, NULL, NULL },
     { "Channel",   UI_ENUM,   v_cch,   a_cch,   NULL, NULL },
@@ -313,55 +343,156 @@ static const ui_item comp_items[] = {
     { "To",        UI_ENUM,   v_cport, a_cport, NULL, NULL },
     { "Send",      UI_ACTION, v_cprev, NULL, comp_send, NULL },
     { "",          UI_INFO,   NULL, NULL, NULL, NULL },
-    { "Fav 1 send", UI_ACTION, v_f0, NULL, s_f0, NULL }, { "  store here", UI_ACTION, NULL, NULL, t_f0, NULL },
-    { "Fav 2 send", UI_ACTION, v_f1, NULL, s_f1, NULL }, { "  store here", UI_ACTION, NULL, NULL, t_f1, NULL },
-    { "Fav 3 send", UI_ACTION, v_f2, NULL, s_f2, NULL }, { "  store here", UI_ACTION, NULL, NULL, t_f2, NULL },
-    { "Fav 4 send", UI_ACTION, v_f3, NULL, s_f3, NULL }, { "  store here", UI_ACTION, NULL, NULL, t_f3, NULL },
+    { "Fav 1",     UI_ACTION, v_f0, NULL, s_f0, NULL, t_f0 },
+    { "Fav 2",     UI_ACTION, v_f1, NULL, s_f1, NULL, t_f1 },
+    { "Fav 3",     UI_ACTION, v_f2, NULL, s_f2, NULL, t_f2 },
+    { "Fav 4",     UI_ACTION, v_f3, NULL, s_f3, NULL, t_f3 },
+    { "",          UI_INFO,   NULL, NULL, NULL, NULL },
+    { "Fav: OCT+ sends, hold OCT+", UI_INFO, NULL, NULL, NULL, NULL },
+    { "stores the message above.", UI_INFO, NULL, NULL, NULL, NULL },
 };
-static ui_menu comp_menu = { comp_items, 15, 0, 0 };
-static void comp_enter(void) { ui_menu_reset(&comp_menu); }
-static void comp_draw(void) { ui_menu_draw(&comp_menu, "Composer"); ui_row(UI_ROWS - 1, "KNOB1:value OCT+:send/cycle", UI_C_DIM, UI_C_BG); }
+static ui_menu comp_menu = { comp_items, 14, 0, 0, "KNOB1:value OCT+:send/cycle" };
+static void comp_enter(void) { ui_menu_enter(&comp_menu); }
+static void comp_draw(void) { ui_menu_draw(&comp_menu, "Composer"); }
 static void comp_event(const mx_event *e) { ui_menu_event(&comp_menu, e); }
 static const ui_page page_composer = { "Composer", comp_enter, comp_draw, comp_event, comp_tick };
 
-/* ------------------------------------------------------------------ connections */
-static u32 conn_last[MIDI_PORT_COUNT][2];
+/* ------------------------------------------------------------------ perform */
+/* The stage page: the big font, four facts, OCT-/OCT+ shift the keyboard's octave.
+ * Each big row is up to three text segments with their own colour; a cache per
+ * segment keeps the SPI traffic to what changed. */
+#define BIG_COLS LCD_BIG_COLS
+#define BIG_ROWS LCD_BIG_ROWS
+static struct { char text[BIG_COLS + 1]; u16 fg; u8 col, valid; } big_cache[BIG_ROWS][3];
+static u32 perf_last[MIDI_PORT_COUNT], perf_lit[MIDI_PORT_COUNT];   /* counters seen, lit until (ms) */
+static void big_seg(int row, int slot, int col, const char *text, u16 fg)
+{
+    char t[BIG_COLS + 1];
+    int n = 0;
+    while (n < BIG_COLS - col && text[n]) { t[n] = text[n]; n++; }
+    t[n] = 0;
+    if (big_cache[row][slot].valid && big_cache[row][slot].fg == fg && big_cache[row][slot].col == col && strcmp(big_cache[row][slot].text, t) == 0) return;
+    lcd_text_big((u16)col, (u16)row, t, fg, UI_C_BG);
+    strcpy(big_cache[row][slot].text, t);
+    big_cache[row][slot].fg = fg; big_cache[row][slot].col = (u8)col; big_cache[row][slot].valid = 1;
+}
+static void perf_paint(void)
+{
+    char b[BIG_COLS + 1], bar[8];
+    fm1_settings *st = settings_get();
+    midi_router *r = bridge_router();
+    u32 now = timer_get_ms(), act[MIDI_PORT_COUNT];
+    int i, usb = usb_midi_configured(0), ble = ble_port_ready();
+    static const char *const pn[MIDI_PORT_COUNT] = { "TRS", "USB", "BLE", "KBD" };
+    snprintf(b, sizeof b, "USB %-3s", usb ? "ok" : "--");
+    big_seg(0, 0, 0, b, usb ? UI_C_OK : UI_C_DIM);
+    snprintf(b, sizeof b, "BLE %-4s", ble ? "ok" : ble_host_active() ? "host" : bt_ble_is_connected() ? "con" : "adv");
+    big_seg(0, 1, 7, b, ble ? UI_C_OK : UI_C_DIM);
+    big_seg(1, 0, 0, st->ble_link_mode == BLE_LINK_POWER_SAVING ? "ECO" : "   ", UI_C_DIM);
+    snprintf(b, sizeof b, "Oct %s%d  ", plus(st->kbd_octave), st->kbd_octave);
+    big_seg(2, 0, 0, b, UI_C_TXT);
+    snprintf(b, sizeof b, "Ch %-2d", st->kbd_channel + 1);
+    big_seg(2, 1, 9, b, UI_C_TXT);
+    if (st->kbd_vel_source) snprintf(b, sizeof b, "Vel pot %-3d", ui_keys()->velocity);
+    else snprintf(b, sizeof b, "Vel %-3d    ", st->kbd_velocity);
+    big_seg(3, 0, 0, b, st->kbd_enabled ? UI_C_TXT : UI_C_DIM);
+    act[0] = r->count_in[MIDI_PORT_TRS]; act[1] = r->count_in[MIDI_PORT_USB] + r->count_out[MIDI_PORT_USB];
+    act[2] = r->count_in[MIDI_PORT_BLE] + r->count_out[MIDI_PORT_BLE]; act[3] = r->count_in[MIDI_PORT_KBD];
+    for (i = 0; i < MIDI_PORT_COUNT; i++) {
+        if (act[i] != perf_last[i]) { perf_last[i] = act[i]; perf_lit[i] = now + 300; }
+    }
+    /* rows 5 and 6: the four ports, lit while something moves */
+    big_seg(5, 0, 0, pn[0], (s32)(perf_lit[0] - now) > 0 ? UI_C_OK : UI_C_DIM);
+    big_seg(5, 1, 4, pn[1], (s32)(perf_lit[1] - now) > 0 ? UI_C_OK : UI_C_DIM);
+    big_seg(5, 2, 8, pn[2], (s32)(perf_lit[2] - now) > 0 ? UI_C_OK : UI_C_DIM);
+    big_seg(6, 0, 0, pn[3], (s32)(perf_lit[3] - now) > 0 ? UI_C_OK : UI_C_DIM);
+    ui_battery_bar(bar, sizeof bar);
+    snprintf(b, sizeof b, "Bat %s %u.%uV", bar, ui_battery_mv() / 1000, (ui_battery_mv() % 1000) / 100);
+    big_seg(7, 0, 0, b, ui_battery_low() ? UI_C_WARN : UI_C_DIM);
+}
+static void perf_enter(void) { memset(big_cache, 0, sizeof big_cache); }
+static void perf_draw(void)
+{
+    memset(big_cache, 0, sizeof big_cache);
+    perf_paint();
+    ui_row(UI_ROWS - 1, "OCT-/+:octave  HOME:leave", UI_C_DIM, UI_C_BG);
+}
+static void perf_event(const mx_event *e)
+{
+    if (e->type != MX_EV_BTN_UP || (e->flags & MX_UP_WAS_HELD)) return;
+    if (e->id == MX_BTN_OCT_PLUS) ui_octave_shift(1);
+    if (e->id == MX_BTN_OCT_MINUS) ui_octave_shift(-1);
+    perf_paint();
+}
+static void perf_tick(void) { perf_paint(); }
+static const ui_page page_perform = { "Perform", perf_enter, perf_draw, perf_event, perf_tick };
+
+/* ------------------------------------------------------------------ status: the home page */
+/* Not a menu, and it should not look like one: the two links in the big font, the
+ * ports' counters and the routes as tables, a band at the bottom as well as the top.
+ * Redrawn through the row cache three times a second, so only moving numbers reach
+ * the panel; a star marks a counter that moved since the last refresh. */
+static u32 conn_in[MIDI_PORT_COUNT], conn_out[MIDI_PORT_COUNT];
+static void cnt5(char *b, u32 v, int moved)         /* six columns, right-aligned: " *1532", "  123k" */
+{
+    char n[8];
+    u32 k = v / 1000u;
+    if (v < 100000u) snprintf(n, sizeof n, "%s%u", moved ? "*" : "", (unsigned)v);
+    else snprintf(n, sizeof n, "%s%uk", moved ? "*" : "", (unsigned)(k > 9999 ? 9999 : k));
+    snprintf(b, 7, "%6s", n);
+}
+static void conn_enter(void) { memset(big_cache, 0, sizeof big_cache); }
 static void conn_draw(void)
 {
     midi_router *r = bridge_router();
-    char l[UI_COLS + 1];
-    int i, row = 1;
-    static const struct { int src, dst; } rt[6] = { {0,1}, {0,2}, {1,2}, {2,1}, {3,1}, {3,2} };
-    ui_row_inv(0, " Connections");
-    snprintf(l, sizeof l, " TRS  jack  in %-6u     %s", (unsigned)r->count_in[MIDI_PORT_TRS], r->count_in[MIDI_PORT_TRS] != conn_last[0][0] ? "*" : "");
-    ui_row((u16)row++, l, UI_C_TXT, UI_C_BG);
-    snprintf(l, sizeof l, " USB  %-5s in %-6u out %-5u%s", usb_midi_configured(0) ? "ok" : "--", (unsigned)r->count_in[MIDI_PORT_USB], (unsigned)r->count_out[MIDI_PORT_USB],
-             (r->count_in[MIDI_PORT_USB] + r->count_out[MIDI_PORT_USB]) != conn_last[1][0] ? "*" : "");
-    ui_row((u16)row++, l, usb_midi_configured(0) ? UI_C_OK : UI_C_DIM, UI_C_BG);
-    snprintf(l, sizeof l, " BLE  %-5s in %-6u out %-5u%s", ble_port_ready() ? "ok" : ble_host_active() ? "host" : "adv", (unsigned)r->count_in[MIDI_PORT_BLE], (unsigned)r->count_out[MIDI_PORT_BLE],
-             (r->count_in[MIDI_PORT_BLE] + r->count_out[MIDI_PORT_BLE]) != conn_last[2][0] ? "*" : "");
-    ui_row((u16)row++, l, ble_port_ready() ? UI_C_OK : UI_C_DIM, UI_C_BG);
-    snprintf(l, sizeof l, " KBD  %-5s in %-6u     %s", settings_get()->kbd_enabled ? "on" : "off", (unsigned)r->count_in[MIDI_PORT_KBD], r->count_in[MIDI_PORT_KBD] != conn_last[3][0] ? "*" : "");
-    ui_row((u16)row++, l, UI_C_TXT, UI_C_BG);
-    conn_last[0][0] = r->count_in[MIDI_PORT_TRS]; conn_last[1][0] = r->count_in[MIDI_PORT_USB] + r->count_out[MIDI_PORT_USB];
-    conn_last[2][0] = r->count_in[MIDI_PORT_BLE] + r->count_out[MIDI_PORT_BLE]; conn_last[3][0] = r->count_in[MIDI_PORT_KBD];
-    row++;
-    ui_row((u16)row++, " Routes            on   opts", UI_C_DIM, UI_C_BG);
-    for (i = 0; i < 6; i++) {
-        const route_opt *o = router_opt(r, rt[i].src, rt[i].dst);
-        int on = router_enabled(r, rt[i].src, rt[i].dst);
-        snprintf(l, sizeof l, "  %s -> %s        %-4s %s%s%s", router_port_name(rt[i].src), router_port_name(rt[i].dst), on ? "on" : "off",
-                 o->channels != 0xFFFF ? "ch " : "", o->remap ? "map " : "", !(o->flags & ROUTE_OPT_CLOCK) ? "noclk" : "");
-        ui_row((u16)row++, l, on ? UI_C_TXT : UI_C_DIM, UI_C_BG);
+    char l[UI_COLS + 1], c[4][8];
+    int i, usb = usb_midi_configured(0), ble = ble_port_ready();
+    ui_title("Status");
+    ui_row(1, "", UI_C_TXT, UI_C_BG);
+    snprintf(l, sizeof l, "USB %-3s", usb ? "ok" : "--");            /* big row 1 = text rows 2 and 3 */
+    big_seg(1, 0, 0, l, usb ? UI_C_OK : UI_C_DIM);
+    snprintf(l, sizeof l, "BLE %-4s", ble ? "ok" : ble_host_active() ? "host" : bt_ble_is_connected() ? "con" : "adv");
+    big_seg(1, 1, 7, l, ble ? UI_C_OK : UI_C_DIM);
+    ui_row(4, "", UI_C_TXT, UI_C_BG);
+    ui_row(5, "         TRS   USB   BLE   KBD", UI_C_DIM, UI_C_BG);
+    for (i = 0; i < MIDI_PORT_COUNT; i++) cnt5(c[i], r->count_in[i], r->count_in[i] != conn_in[i]);
+    snprintf(l, sizeof l, " in   %s%s%s%s", c[0], c[1], c[2], c[3]);
+    ui_row(6, l, UI_C_TXT, UI_C_BG);
+    cnt5(c[1], r->count_out[MIDI_PORT_USB], r->count_out[MIDI_PORT_USB] != conn_out[MIDI_PORT_USB]);
+    cnt5(c[2], r->count_out[MIDI_PORT_BLE], r->count_out[MIDI_PORT_BLE] != conn_out[MIDI_PORT_BLE]);
+    snprintf(l, sizeof l, " out       -%s%s     -", c[1], c[2]);     /* the jack and the keys are inputs */
+    ui_row(7, l, UI_C_TXT, UI_C_BG);
+    for (i = 0; i < MIDI_PORT_COUNT; i++) { conn_in[i] = r->count_in[i]; conn_out[i] = r->count_out[i]; }
+    ui_row(8, "", UI_C_TXT, UI_C_BG);
+    ui_row(9, " Routes   to USB    to BLE", UI_C_DIM, UI_C_BG);
+    for (i = 0; i < MIDI_PORT_COUNT; i++) {                            /* a row per source, a cell per destination */
+        char a[10], b[11];                                             /* ten columns each, a space kept between */
+        int on_a = 0, on_b = 0;
+        if (i == MIDI_PORT_USB) strcpy(a, "-"); else { route_val(a, sizeof a, i, MIDI_PORT_USB); on_a = router_enabled(r, i, MIDI_PORT_USB); }
+        if (i == MIDI_PORT_BLE) strcpy(b, "-"); else { route_val(b, sizeof b, i, MIDI_PORT_BLE); on_b = router_enabled(r, i, MIDI_PORT_BLE); }
+        snprintf(l, sizeof l, " from %-4s%-10s%s", router_port_name(i), a, b);
+        ui_row2((u16)(10 + i), l, on_a ? UI_C_TXT : UI_C_DIM, UI_C_BG, 20, on_b ? UI_C_TXT : UI_C_DIM);
     }
-    snprintf(l, sizeof l, " filters %s%s%s  dropped %u", (r->filters & FILTER_DROP_CLOCK) ? "clk " : "", (r->filters & FILTER_DROP_ACTIVE_SENSE) ? "as " : "", (r->filters & FILTER_DROP_SYSEX) ? "sx " : "", (unsigned)r->count_dropped);
-    ui_row((u16)row++, l, UI_C_DIM, UI_C_BG);
-    while (row < UI_ROWS - 1) ui_row((u16)row++, "", UI_C_TXT, UI_C_BG);
-    ui_row(UI_ROWS - 1, "* = activity   OCT-:back", UI_C_DIM, UI_C_BG);
+    {
+        char d[8], *dp = d;
+        cnt5(d, r->count_dropped, 0);
+        while (*dp == ' ') dp++;
+        snprintf(l, sizeof l, " filters %s%s%s%s drop %s", (r->filters & FILTER_DROP_CLOCK) ? "clk " : "",
+                 (r->filters & FILTER_DROP_ACTIVE_SENSE) ? "as " : "", (r->filters & FILTER_DROP_SYSEX) ? "sx " : "",
+                 r->filters ? "" : "none ", dp);
+        ui_row(14, l, UI_C_DIM, UI_C_BG);
+    }
+    i = battery_line(l, sizeof l);
+    ui_row(15, l, i ? UI_C_WARN : UI_C_DIM, UI_C_BG);
+    ui_row(UI_ROWS - 1, " OCT+ menu   hold HOME perform", UI_C_TITLE_ST, UI_C_TITLE_BG);
 }
-static void conn_event(const mx_event *e) { if (e->type == MX_EV_BTN_UP && !(e->flags & MX_UP_WAS_HELD) && e->id == MX_BTN_OCT_MINUS) ui_back(); }
-static void conn_tick(void) { static u8 k; if (++k >= 3) { k = 0; ui_invalidate(); } }
-static const ui_page page_connections = { "Connections", NULL, conn_draw, conn_event, conn_tick };
+static void conn_event(const mx_event *e)
+{
+    if (e->type != MX_EV_BTN_UP || (e->flags & MX_UP_WAS_HELD)) return;
+    if (e->id == MX_BTN_OCT_PLUS || e->id == MX_BTN_OCT_MINUS) ui_goto(PAGE_MAIN);
+}
+static void conn_tick(void) { static u8 k; if (++k >= 3) { k = 0; ui_refresh(); } }
+static const ui_page page_connections = { "Status", conn_enter, conn_draw, conn_event, conn_tick };
 
 /* ------------------------------------------------------------------ statistics */
 static void stats_draw(void)
@@ -369,7 +500,7 @@ static void stats_draw(void)
     midi_stats *st = bridge_stats();
     char l[UI_COLS + 1], nb[8], nb2[8];
     int i, row = 1;
-    ui_row_inv(0, " Statistics       OCT+:reset");
+    ui_title("Statistics");
     for (i = 0; i < ST_KIND_COUNT; i++) {
         snprintf(l, sizeof l, " %-11s %10u", stats_kind_name(i), (unsigned)st->kind[i]);
         ui_row((u16)row++, l, st->kind[i] ? UI_C_TXT : UI_C_DIM, UI_C_BG);
@@ -388,13 +519,13 @@ static void stats_draw(void)
         ui_row((u16)row++, " (1-9, 0 = 10, a-f = 11-16)", UI_C_DIM, UI_C_BG);
     }
     while (row < UI_ROWS - 1) ui_row((u16)row++, "", UI_C_TXT, UI_C_BG);
-    ui_row(UI_ROWS - 1, "OCT-:back", UI_C_DIM, UI_C_BG);
+    ui_row(UI_ROWS - 1, "OCT+:reset  OCT-:back", UI_C_DIM, UI_C_BG);
 }
 static void stats_event(const mx_event *e)
 {
     if (e->type != MX_EV_BTN_UP || (e->flags & MX_UP_WAS_HELD)) return;
     if (e->id == MX_BTN_OCT_MINUS) ui_back();
-    if (e->id == MX_BTN_OCT_PLUS) { bridge_stats_reset(); ui_invalidate(); }
+    if (e->id == MX_BTN_OCT_PLUS) { bridge_stats_reset(); ui_toast("counts reset"); ui_invalidate(); }
 }
 static void stats_tick(void) { static u8 k; if (++k >= 5) { k = 0; ui_invalidate(); } }
 static const ui_page page_stats = { "Statistics", NULL, stats_draw, stats_event, stats_tick };
@@ -411,10 +542,10 @@ static void v_rec_state(char *b, int n)
 }
 static void act_rec(void) { midi_recorder *r = bridge_recorder(); if (r->recording) rec_stop(r, timer_get_ms()); else rec_start(r, timer_get_ms()); }
 static void act_play(void) { midi_recorder *r = bridge_recorder(); if (r->playing) rec_play_stop(r); else rec_play(r, timer_get_ms(), rec_loop); }
-static void act_rec_clear(void) { rec_clear(bridge_recorder()); }
+static void act_rec_clear(void) { rec_clear(bridge_recorder()); ui_toast("cleared"); }
 static void v_rec_loop(char *b, int n) { onoff(b, n, rec_loop); }
 static void a_rec_loop(int d) { (void)d; rec_loop = !rec_loop; bridge_recorder()->loop = rec_loop; }
-static void v_rec_to(char *b, int n) { snprintf(b, n, "%s", rec_to == 1 ? "USB" : rec_to == 2 ? "BLE" : "USB+BLE"); }
+static void v_rec_to(char *b, int n) { snprintf(b, n, "%s", to_name(rec_to)); }
 static void a_rec_to(int d) { (void)d; rec_to = (u8)(rec_to % 3 + 1); bridge_recorder_ports(rec_to); }
 static void v_rec_play(char *b, int n) { snprintf(b, n, "%s", bridge_recorder()->playing ? "stop" : "start"); }
 static void v_rec_rec(char *b, int n) { snprintf(b, n, "%s", bridge_recorder()->recording ? "stop" : "start"); }
@@ -430,8 +561,8 @@ static const ui_item rec_items[] = {
     { "(TRS, USB, BLE), up to 2048", UI_INFO, NULL, NULL, NULL, NULL },
     { "events. REC toggles recording.", UI_INFO, NULL, NULL, NULL, NULL },
 };
-static ui_menu rec_menu = { rec_items, 10, 0, 0 };
-static void rec_enter(void) { ui_menu_reset(&rec_menu); }
+static ui_menu rec_menu = { rec_items, 10, 0, 0, NULL };
+static void rec_enter(void) { ui_menu_enter(&rec_menu); }
 static void rec_draw(void) { ui_menu_draw(&rec_menu, "Recorder"); }
 static void recpage_event(const mx_event *e)
 {
@@ -493,16 +624,16 @@ static const char *const ref_lines[] = {
 };
 #define REF_LINES ((int)(sizeof ref_lines / sizeof ref_lines[0]))
 static int ref_top;
-static void ref_enter(void) { ref_top = 0; }
+static void ref_enter(void) { if (!ui_came_back()) ref_top = 0; }
 static void ref_draw(void)
 {
     int i;
-    ui_row_inv(0, " MIDI reference    SEL:scroll");
+    ui_title("MIDI reference");
     for (i = 0; i < UI_ROWS - 2; i++) {
         int k = ref_top + i;
         ui_row((u16)(1 + i), k < REF_LINES ? ref_lines[k] : "", k < REF_LINES && ref_lines[k][0] != ' ' && ref_lines[k][0] ? UI_C_OK : UI_C_TXT, UI_C_BG);
     }
-    ui_row(UI_ROWS - 1, "OCT-:back", UI_C_DIM, UI_C_BG);
+    ui_row(UI_ROWS - 1, "SEL:scroll  OCT-:back", UI_C_DIM, UI_C_BG);
 }
 static void ref_event(const mx_event *e)
 {
@@ -521,7 +652,7 @@ static void v_clk_run(char *b, int n) { snprintf(b, n, "%s", bridge_clock_runnin
 static void act_clk(void) { bridge_clock_run(!bridge_clock_running()); }
 static void v_clk_bpm(char *b, int n) { snprintf(b, n, "%u", settings_get()->clock_bpm); }
 static void a_clk_bpm(int d) { int v = settings_get()->clock_bpm + d; if (v < 20) v = 20; if (v > 300) v = 300; settings_get()->clock_bpm = (u16)v; mark(); }
-static void v_clk_to(char *b, int n) { u8 t = settings_get()->clock_to; snprintf(b, n, "%s", t == 1 ? "USB" : t == 2 ? "BLE" : "USB+BLE"); }
+static void v_clk_to(char *b, int n) { snprintf(b, n, "%s", to_name(settings_get()->clock_to)); }
 static void a_clk_to(int d) { (void)d; settings_get()->clock_to = (u8)(settings_get()->clock_to % 3 + 1); mark(); }
 static const ui_item clk_items[] = {
     { "Clock",        UI_ACTION, v_clk_run, NULL, act_clk, NULL },
@@ -532,8 +663,8 @@ static const ui_item clk_items[] = {
     { "Start on run, Stop on stop.", UI_INFO, NULL, NULL, NULL, NULL },
     { "PLAY toggles it on this page.", UI_INFO, NULL, NULL, NULL, NULL },
 };
-static ui_menu clk_menu = { clk_items, 7, 0, 0 };
-static void clk_enter(void) { ui_menu_reset(&clk_menu); }
+static ui_menu clk_menu = { clk_items, 7, 0, 0, NULL };
+static void clk_enter(void) { ui_menu_enter(&clk_menu); }
 static void clk_draw(void) { ui_menu_draw(&clk_menu, "Clock master"); }
 static void clk_event(const mx_event *e)
 {
@@ -558,8 +689,8 @@ static void v_hostauto(char *b, int n) { onoff(b, n, settings_get()->ble_host_au
 static void a_hostauto(int d) { (void)d; settings_get()->ble_host_auto = !settings_get()->ble_host_auto; mark(); }
 static void v_hostpair(char *b, int n) { onoff(b, n, settings_get()->ble_host_pair); }
 static void a_hostpair(int d) { (void)d; settings_get()->ble_host_pair = !settings_get()->ble_host_pair; mark(); }
-static void act_disconnect(void) { ble_app_disconnect(); }
-static void do_forget(void) { ble_app_disconnect(); ble_list_clear_all(); }
+static void act_disconnect(void) { ble_app_disconnect(); ui_toast("disconnecting"); }
+static void do_forget(void) { ble_app_disconnect(); ble_list_clear_all(); ui_toast("bonds forgotten"); }
 static void act_forget(void) { ui_confirm("Forget all paired devices?", do_forget); }
 static void v_bonds(char *b, int n) { snprintf(b, n, "%u", ble_list_get_count()); }
 static void v_name(char *b, int n) { snprintf(b, n, "%s", BLE_MIDI_DEVICE_NAME); }
@@ -580,8 +711,8 @@ static const ui_item ble_items[] = {
     { "Pair on connect", UI_TOGGLE, v_hostpair, a_hostpair, NULL, host_on },
     { "Auto reconnect", UI_TOGGLE, v_hostauto, a_hostauto, NULL, host_on },
 };
-static ui_menu ble_menu = { ble_items, 11, 0, 0 };
-static void ble_enter(void) { ui_menu_reset(&ble_menu); }
+static ui_menu ble_menu = { ble_items, 11, 0, 0, NULL };
+static void ble_enter(void) { ui_menu_enter(&ble_menu); }
 static void ble_draw(void) { ui_menu_draw(&ble_menu, "Bluetooth"); }
 static void ble_event(const mx_event *e) { ui_menu_event(&ble_menu, e); }
 static void ble_tick(void) { static u8 k; if (++k >= 5) { k = 0; ui_invalidate(); } }
@@ -595,7 +726,7 @@ static void scan_draw(void)
     ble_host_device list[BLE_HOST_MAX_DEVICES];
     char l[UI_COLS + 1];
     int n = ble_host_devices(list, BLE_HOST_MAX_DEVICES), i, row = 2;
-    ui_row_inv(0, " Scan devices");
+    ui_title("Scan devices");
     snprintf(l, sizeof l, " %-21s %d found", ble_host_state_text() + 6, n);
     ui_row(1, l, UI_C_DIM, UI_C_BG);
     if (scan_cursor >= n) scan_cursor = n ? (u8)(n - 1) : 0;
@@ -617,7 +748,7 @@ static void scan_event(const mx_event *e)
     }
     if (e->type != MX_EV_BTN_UP || (e->flags & MX_UP_WAS_HELD)) return;
     if (e->id == MX_BTN_OCT_MINUS) { ble_host_scan(0); ui_back(); }
-    if (e->id == MX_BTN_OCT_PLUS) { ble_host_connect(scan_cursor); ui_invalidate(); }
+    if (e->id == MX_BTN_OCT_PLUS) { ble_host_connect(scan_cursor); ui_toast("connecting"); ui_invalidate(); }
 }
 static void scan_tick(void) { static u8 k; if (++k >= 5) { k = 0; ui_invalidate(); } }
 static const ui_page page_scan = { "Scan devices", scan_enter, scan_draw, scan_event, scan_tick };
@@ -634,8 +765,8 @@ static const ui_item usb_items[] = {
     { "USB MIDI",      UI_TOGGLE, v_usb_en, a_usb_en, NULL, NULL },
     { "USB in/out",    UI_INFO,   v_cnt_usb, NULL, NULL, NULL },
 };
-static ui_menu usb_menu = { usb_items, 4, 0, 0 };
-static void usb_enter(void) { ui_menu_reset(&usb_menu); }
+static ui_menu usb_menu = { usb_items, 4, 0, 0, NULL };
+static void usb_enter(void) { ui_menu_enter(&usb_menu); }
 static void usb_draw(void) { ui_menu_draw(&usb_menu, "USB"); }
 static void usb_event(const mx_event *e) { ui_menu_event(&usb_menu, e); }
 static void usb_tick(void) { static u8 k; if (++k >= 5) { k = 0; ui_invalidate(); } }
@@ -655,7 +786,7 @@ static void a_mg(int d) { (void)d; settings_get()->merge_guard = !settings_get()
 static void v_pod(char *b, int n) { onoff(b, n, settings_get()->panic_on_disconnect); }
 static void a_pod(int d) { (void)d; settings_get()->panic_on_disconnect = !settings_get()->panic_on_disconnect; mark(); }
 static void v_panic(char *b, int n) { snprintf(b, n, "%s", bridge_panic_active() ? "sending..." : ""); }
-static void act_panic(void) { bridge_panic_request(); }
+static void act_panic(void) { bridge_panic_request(); ui_toast("panic: all notes off"); }
 static const ui_item filt_items[] = {
     { "Drop clock (F8)",     UI_TOGGLE, v_fclk, a_fclk, NULL, NULL },
     { "Drop active sense",   UI_TOGGLE, v_fas,  a_fas,  NULL, NULL },
@@ -666,8 +797,8 @@ static const ui_item filt_items[] = {
     { "Panic on link loss",  UI_TOGGLE, v_pod, a_pod, NULL, NULL },
     { "Note collision guard",UI_TOGGLE, v_mg,  a_mg,  NULL, NULL },
 };
-static ui_menu filt_menu = { filt_items, 8, 0, 0 };
-static void filt_enter(void) { ui_menu_reset(&filt_menu); }
+static ui_menu filt_menu = { filt_items, 8, 0, 0, NULL };
+static void filt_enter(void) { ui_menu_enter(&filt_menu); }
 static void filt_draw(void) { ui_menu_draw(&filt_menu, "MIDI filters"); }
 static void filt_event(const mx_event *e) { ui_menu_event(&filt_menu, e); }
 static void filt_tick(void) { static u8 k; if (++k >= 5) { k = 0; ui_invalidate(); } }
@@ -680,11 +811,14 @@ static void a_bl(int d) { int i = settings_get()->backlight_idx + (d > 0 ? 1 : -
 static void v_inv(char *b, int n) { onoff(b, n, settings_get()->invert); }
 static void a_inv(int d) { (void)d; settings_get()->invert = !settings_get()->invert; lcd_invert(settings_get()->invert); mark(); }
 static const ui_item disp_items[] = {
-    { "Backlight off after", UI_ENUM,   v_bl,  a_bl,  NULL, NULL },
+    { "Screen off after",    UI_ENUM,   v_bl,  a_bl,  NULL, NULL },
     { "Invert colours",      UI_TOGGLE, v_inv, a_inv, NULL, NULL },
+    { "",                    UI_INFO,   NULL, NULL, NULL, NULL },
+    { "Keys and MIDI jobs work with", UI_INFO, NULL, NULL, NULL, NULL },
+    { "the backlight off.",  UI_INFO,   NULL, NULL, NULL, NULL },
 };
-static ui_menu disp_menu = { disp_items, 2, 0, 0 };
-static void disp_enter(void) { ui_menu_reset(&disp_menu); }
+static ui_menu disp_menu = { disp_items, 5, 0, 0, NULL };
+static void disp_enter(void) { ui_menu_enter(&disp_menu); }
 static void disp_draw(void) { ui_menu_draw(&disp_menu, "Display"); }
 static void disp_event(const mx_event *e) { ui_menu_event(&disp_menu, e); }
 static const ui_page page_display = { "Display", disp_enter, disp_draw, disp_event, NULL };
@@ -693,57 +827,62 @@ static const ui_page page_display = { "Display", disp_enter, disp_draw, disp_eve
 static void v_ident(char *b, int n) { snprintf(b, n, "%s", UPD_IDENTITY); }
 static void v_ver(char *b, int n) { snprintf(b, n, "v%s", FM1_FW_VERSION); }
 static void v_built(char *b, int n) { snprintf(b, n, "%s", __DATE__); }
-static void v_bat(char *b, int n) { snprintf(b, n, "%u mV (pin)", bat_mv); }
+static void v_bat(char *b, int n) { snprintf(b, n, "%u mV (pin)", ui_battery_mv()); }
+static int w_bat(void) { return ui_battery_low(); }
 static void v_up(char *b, int n) { u32 s = timer_get_ms() / 1000; snprintf(b, n, "%u:%02u:%02u", (unsigned)(s / 3600), (unsigned)(s / 60 % 60), (unsigned)(s % 60)); }
 static void v_boots(char *b, int n) { snprintf(b, n, "%u", (unsigned)health_get()->boots); }
 static void v_reason(char *b, int n) { snprintf(b, n, "%s", health_reason_text(health_get()->last_reason)); }
 static void v_crashes(char *b, int n) { snprintf(b, n, "wdt %u hang %u", (unsigned)health_get()->wdt_resets, (unsigned)health_get()->hangs); }
-static void act_health_reset(void) { health_reset_counters(); }
-static void v_drops(char *b, int n) { extern mx_state *matrix_state(void); snprintf(b, n, "%u", (unsigned)matrix_state()->dropped); }
+static int w_crashes(void) { return health_get()->wdt_resets + health_get()->hangs != 0; }
+static void act_health_reset(void) { health_reset_counters(); ui_toast("crash counters reset"); }
+extern mx_state *matrix_state(void);
+static void v_drops(char *b, int n) { snprintf(b, n, "%u", (unsigned)matrix_state()->dropped); }
+static int w_drops(void) { return matrix_state()->dropped != 0; }
 static void go_input(void) { ui_goto(PAGE_INPUT); }
-static void go_presets(void) { ui_goto(PAGE_PRESETS); }
 static void do_reboot(void) { cpu_reset(); }
 static void act_reboot(void) { ui_confirm("Reboot now?", do_reboot); }
 static void do_recovery(void) { upd_port_uboot(); }
 static void act_recovery(void) { ui_confirm("Reboot into USB recovery mode?", do_recovery); }
-static void do_reset(void) { settings_reset(); settings_apply_router(settings_get(), bridge_router()); lcd_invert(0); ui_keys_reload(); }
+static void do_reset(void) { settings_reset(); settings_apply_router(settings_get(), bridge_router()); lcd_invert(0); ui_keys_reload(); ui_toast("settings reset"); }
 static void act_reset(void) { ui_confirm("Reset all settings?", do_reset); }
 static const ui_item sys_items[] = {
     { "Firmware",       UI_INFO,   v_ident, NULL, NULL, NULL },
     { "Version",        UI_INFO,   v_ver,   NULL, NULL, NULL },
     { "Built",          UI_INFO,   v_built, NULL, NULL, NULL },
-    { "Battery",        UI_INFO,   v_bat,   NULL, NULL, NULL },
+    { "Battery",        UI_INFO,   v_bat,   NULL, NULL, NULL, NULL, w_bat },
     { "Uptime",         UI_INFO,   v_up,    NULL, NULL, NULL },
     { "TRS in/out",     UI_INFO,   v_cnt_trs, NULL, NULL, NULL },
     { "USB in/out",     UI_INFO,   v_cnt_usb, NULL, NULL, NULL },
     { "BLE in/out",     UI_INFO,   v_cnt_ble, NULL, NULL, NULL },
-    { "Input drops",    UI_INFO,   v_drops, NULL, NULL, NULL },
+    { "Input drops",    UI_INFO,   v_drops, NULL, NULL, NULL, NULL, w_drops },
     { "Boots",          UI_INFO,   v_boots, NULL, NULL, NULL },
     { "Last reset",     UI_INFO,   v_reason, NULL, NULL, NULL },
-    { "Crashes",        UI_INFO,   v_crashes, NULL, NULL, NULL },
+    { "Crashes",        UI_INFO,   v_crashes, NULL, NULL, NULL, NULL, w_crashes },
     { "Reset crash counters", UI_ACTION, NULL, NULL, act_health_reset, NULL },
     { "",               UI_INFO,   NULL, NULL, NULL, NULL },
     { "Reboot",         UI_ACTION, NULL, NULL, act_reboot, NULL },
     { "USB recovery mode", UI_ACTION, NULL, NULL, act_recovery, NULL },
     { "Reset settings", UI_ACTION, NULL, NULL, act_reset, NULL },
-    { "Presets",        UI_SUBMENU, NULL, NULL, go_presets, NULL },
     { "Input test",     UI_SUBMENU, NULL, NULL, go_input, NULL },
 };
-static ui_menu sys_menu = { sys_items, 19, 0, 0 };
-static void sys_enter(void) { ui_menu_reset(&sys_menu); }
+static ui_menu sys_menu = { sys_items, 18, 0, 0, NULL };
+static void sys_enter(void) { ui_menu_enter(&sys_menu); }
 static void sys_draw(void) { ui_menu_draw(&sys_menu, "System"); }
 static void sys_event(const mx_event *e) { ui_menu_event(&sys_menu, e); }
-static void sys_tick(void) { static u8 k; if (++k >= 10) { k = 0; bat_mv = (u16)adc_get_voltage(AD_CH_PB01); ui_invalidate(); } }
+static void sys_tick(void) { static u8 k; if (++k >= 10) { k = 0; ui_invalidate(); } }
 static const ui_page page_system = { "System", sys_enter, sys_draw, sys_event, sys_tick };
 
 /* ------------------------------------------------------------------ keyboard */
+/* OCT-/OCT+ adjust the highlighted row (the cursor starts on Octave, so they shift the
+ * octave until you move it); held, they shift the octave from any row. The knobs
+ * send their CCs here, so KNOB1 is not the menu's; SAVE leaves. */
 static void kbd_apply(void) { mark(); ui_keys_reload(); }
 static void v_kbd_en(char *b, int n) { onoff(b, n, settings_get()->kbd_enabled); }
 static void a_kbd_en(int d) { (void)d; settings_get()->kbd_enabled = !settings_get()->kbd_enabled; kbd_apply(); }
 static void v_kbd_ch(char *b, int n) { snprintf(b, n, "%d", settings_get()->kbd_channel + 1); }
 static void a_kbd_ch(int d) { settings_get()->kbd_channel = (u8)((settings_get()->kbd_channel + (d > 0 ? 1 : 15)) & 15); kbd_apply(); }
 static void v_kbd_oct(char *b, int n) { int o = settings_get()->kbd_octave; snprintf(b, n, "%s%d  (F%d..G%d)", plus(o), o, 3 + o, 5 + o); }
-static void a_kbd_oct(int d) { int o = settings_get()->kbd_octave + (d > 0 ? 1 : -1); if (o < -3) o = -3; if (o > 3) o = 3; settings_get()->kbd_octave = (s8)o; kbd_apply(); }
+static void a_kbd_oct(int d) { ui_octave_shift(d > 0 ? 1 : -1); }
 static void v_kbd_vel(char *b, int n) { if (settings_get()->kbd_vel_source) snprintf(b, n, "pot %d", ui_keys()->velocity); else snprintf(b, n, "%d", settings_get()->kbd_velocity); }
 static void v_kbd_vs(char *b, int n) { snprintf(b, n, "%s", settings_get()->kbd_vel_source ? "MASTER pot" : "fixed"); }
 static void a_kbd_vs(int d) { (void)d; settings_get()->kbd_vel_source = !settings_get()->kbd_vel_source; kbd_apply(); }
@@ -760,7 +899,7 @@ static void v_knob4(char *b, int n) { v_knob(b, n, 3); }
 static const ui_item kbd_items[] = {
     { "Keys send MIDI",  UI_TOGGLE, v_kbd_en,  a_kbd_en,  NULL, NULL },
     { "Channel",         UI_ENUM,   v_kbd_ch,  a_kbd_ch,  NULL, NULL },
-    { "Octave  (OCT-/+)",UI_ENUM,   v_kbd_oct, a_kbd_oct, NULL, NULL },
+    { "Octave",          UI_ENUM,   v_kbd_oct, a_kbd_oct, NULL, NULL },
     { "Velocity",        UI_ENUM,   v_kbd_vel, a_kbd_vel, NULL, NULL },
     { "Velocity source", UI_ENUM,   v_kbd_vs,  a_kbd_vs,  NULL, NULL },
     { "Program (PRESETS)", UI_ENUM, v_prog, a_prog, NULL, NULL },
@@ -771,11 +910,13 @@ static const ui_item kbd_items[] = {
     { "KNOB3",           UI_INFO,   v_knob3, NULL, NULL, NULL },
     { "KNOB4",           UI_INFO,   v_knob4, NULL, NULL, NULL },
     { "",                UI_INFO,   NULL, NULL, NULL, NULL },
-    { "Knobs send CCs on this page", UI_INFO, NULL, NULL, NULL, NULL },
+    { "Knobs send CCs on this page.", UI_INFO, NULL, NULL, NULL, NULL },
+    { "Hold OCT-/+: octave anywhere.", UI_INFO, NULL, NULL, NULL, NULL },
 };
-static ui_menu kbd_menu = { kbd_items, 14, 0, 0 };
-static void kbd_enter(void) { ui_menu_reset(&kbd_menu); }
-static void kbd_draw(void) { ui_menu_draw(&kbd_menu, "Keyboard"); ui_row(UI_ROWS - 1, "SEL:move OCT:octave SAVE:back", UI_C_DIM, UI_C_BG); }
+#define KBD_OCTAVE_ROW 2
+static ui_menu kbd_menu = { kbd_items, 15, 0, 0, "OCT-/+:adjust  SAVE:back" };
+static void kbd_enter(void) { ui_menu_enter(&kbd_menu); if (!ui_came_back()) kbd_menu.cursor = KBD_OCTAVE_ROW; }
+static void kbd_draw(void) { ui_menu_draw(&kbd_menu, "Keyboard"); }
 static void kbd_event(const mx_event *e)
 {
     midi_msg m;
@@ -786,9 +927,10 @@ static void kbd_event(const mx_event *e)
         ui_invalidate();
         return;
     }
-    if (e->type == MX_EV_BTN_UP && !(e->flags & MX_UP_WAS_HELD) && (e->id == MX_BTN_OCT_MINUS || e->id == MX_BTN_OCT_PLUS)) {
-        a_kbd_oct(e->id == MX_BTN_OCT_PLUS ? 1 : -1);
-        ui_invalidate();
+    if (e->type != MX_EV_ENC && (e->id == MX_BTN_OCT_MINUS || e->id == MX_BTN_OCT_PLUS)) {   /* SELECT's id is OCT-'s: check the type */
+        int up = e->id == MX_BTN_OCT_PLUS;
+        if (e->type == MX_EV_BTN_HOLD) { ui_octave_shift(up ? 1 : -1); ui_invalidate(); }
+        else if (e->type == MX_EV_BTN_UP && !(e->flags & MX_UP_WAS_HELD)) ui_menu_adjust(&kbd_menu, up ? 1 : -1);
         return;
     }
     if (e->type == MX_EV_BTN_UP && !(e->flags & MX_UP_WAS_HELD) && e->id == MX_BTN_SAVE) { ui_back(); return; }   /* OCT- is taken: SAVE leaves */
@@ -846,8 +988,8 @@ static const ui_item btn_items[] = {
     { "the keyboard's. Or press", UI_INFO, NULL, NULL, NULL, NULL },
     { "a key to pick it.", UI_INFO, NULL, NULL, NULL, NULL },
 };
-static ui_menu btn_menu = { btn_items, 16, 0, 0 };
-static void btn_enter(void) { ui_menu_reset(&btn_menu); }
+static ui_menu btn_menu = { btn_items, 16, 0, 0, NULL };
+static void btn_enter(void) { ui_menu_enter(&btn_menu); }
 static void btn_draw(void) { ui_menu_draw(&btn_menu, "Button MIDI"); }
 static void btn_event(const mx_event *e)
 {
@@ -871,43 +1013,72 @@ int ui_buttons_page_pick(int key)
 static const ui_page page_buttons = { "Button MIDI", btn_enter, btn_draw, btn_event, NULL };
 
 /* ------------------------------------------------------------------ presets */
+/* One row per slot with a summary of what it holds. OCT+ loads a used slot (saves
+ * into an empty one); hold OCT+ opens the slot's page: load, save here, clear. */
 static int preset_slot;
+static fm1_settings peek[FM1_PRESET_COUNT];
+static u8 peek_ok[FM1_PRESET_COUNT];
+static void pre_refresh(void) { int i; for (i = 0; i < FM1_PRESET_COUNT; i++) peek_ok[i] = settings_preset_peek(i, &peek[i]) == 0; }
 static void preset_apply(void) { settings_apply_router(settings_get(), bridge_router()); ui_keys_reload(); ble_port_set_link_mode(settings_get()->ble_link_mode); ble_port_set_mode(settings_get()->ble_mode); usb_port_apply(); lcd_invert(settings_get()->invert); }
-static void do_load(void) { if (settings_preset_load(preset_slot) == 0) preset_apply(); }
-static void do_save(void) { settings_preset_save(preset_slot); }
-static void do_clear(void) { settings_preset_clear(preset_slot); }
-static void v_pre(char *b, int n, int slot) { snprintf(b, n, "%s", settings_preset_used(slot) ? "used" : "empty"); }
-static int pre_used(int slot) { return settings_preset_used(slot); }
+static const char *const pre_msg_load[4] = { "preset 1 loaded", "preset 2 loaded", "preset 3 loaded", "preset 4 loaded" };
+static const char *const pre_msg_save[4] = { "saved to preset 1", "saved to preset 2", "saved to preset 3", "saved to preset 4" };
+static const char *const pre_msg_clear[4] = { "preset 1 cleared", "preset 2 cleared", "preset 3 cleared", "preset 4 cleared" };
+static void do_load(void) { if (settings_preset_load(preset_slot) == 0) { preset_apply(); ui_toast(pre_msg_load[preset_slot]); } pre_refresh(); }
+static void do_save(void) { if (settings_preset_save(preset_slot) == 0) ui_toast(pre_msg_save[preset_slot]); pre_refresh(); }
+static void do_clear(void) { if (settings_preset_clear(preset_slot) == 0) ui_toast(pre_msg_clear[preset_slot]); pre_refresh(); }
+static int routes_on(uint16_t mask) { int n = 0; mask &= ROUTE_VALID_MASK; while (mask) { n += mask & 1; mask >>= 1; } return n; }
+static void v_pre(char *b, int n, int slot)
+{
+    if (!peek_ok[slot]) { snprintf(b, n, "empty"); return; }
+    snprintf(b, n, "%d/6 rt  ch %d%s%s", routes_on(peek[slot].routes), peek[slot].kbd_channel + 1,
+             peek[slot].ble_mode == BLE_MODE_HOST ? "  host" : "", peek[slot].ble_link_mode == BLE_LINK_POWER_SAVING ? "  eco" : "");
+}
+static const char *const pre_q_load[4] = { "Load preset 1? Settings replaced.", "Load preset 2? Settings replaced.", "Load preset 3? Settings replaced.", "Load preset 4? Settings replaced." };
+static const char *const pre_q_save[4] = { "Save settings to preset 1?", "Save settings to preset 2?", "Save settings to preset 3?", "Save settings to preset 4?" };
+static const char *const pre_q_clear[4] = { "Clear preset 1?", "Clear preset 2?", "Clear preset 3?", "Clear preset 4?" };
+static void pre_primary(int slot) { preset_slot = slot; if (peek_ok[slot]) ui_confirm(pre_q_load[slot], do_load); else ui_confirm(pre_q_save[slot], do_save); }
+static void pre_more(int slot) { preset_slot = slot; ui_goto(PAGE_PRESET_OPT); }
 #define PRESET_ITEMS(N) \
     static void v_p##N(char *b, int n) { v_pre(b, n, N); } \
-    static void l_p##N(void) { preset_slot = N; ui_confirm("Load preset " #N "? Current settings are replaced.", do_load); } \
-    static void s_p##N(void) { preset_slot = N; ui_confirm("Save current settings to preset " #N "?", do_save); } \
-    static void c_p##N(void) { preset_slot = N; ui_confirm("Clear preset " #N "?", do_clear); } \
-    static int u_p##N(void) { return pre_used(N); }
+    static void a_p##N(void) { pre_primary(N); } \
+    static void h_p##N(void) { pre_more(N); }
 PRESET_ITEMS(0) PRESET_ITEMS(1) PRESET_ITEMS(2) PRESET_ITEMS(3)
 static const ui_item pre_items[] = {
-    { "Preset 1",       UI_INFO,   v_p0, NULL, NULL, NULL },
-    { "  load",         UI_ACTION, NULL, NULL, l_p0, u_p0 },
-    { "  save here",    UI_ACTION, NULL, NULL, s_p0, NULL },
-    { "  clear",        UI_ACTION, NULL, NULL, c_p0, u_p0 },
-    { "Preset 2",       UI_INFO,   v_p1, NULL, NULL, NULL },
-    { "  load",         UI_ACTION, NULL, NULL, l_p1, u_p1 },
-    { "  save here",    UI_ACTION, NULL, NULL, s_p1, NULL },
-    { "  clear",        UI_ACTION, NULL, NULL, c_p1, u_p1 },
-    { "Preset 3",       UI_INFO,   v_p2, NULL, NULL, NULL },
-    { "  load",         UI_ACTION, NULL, NULL, l_p2, u_p2 },
-    { "  save here",    UI_ACTION, NULL, NULL, s_p2, NULL },
-    { "  clear",        UI_ACTION, NULL, NULL, c_p2, u_p2 },
-    { "Preset 4",       UI_INFO,   v_p3, NULL, NULL, NULL },
-    { "  load",         UI_ACTION, NULL, NULL, l_p3, u_p3 },
-    { "  save here",    UI_ACTION, NULL, NULL, s_p3, NULL },
-    { "  clear",        UI_ACTION, NULL, NULL, c_p3, u_p3 },
+    { "Preset 1",       UI_ACTION, v_p0, NULL, a_p0, NULL, h_p0 },
+    { "Preset 2",       UI_ACTION, v_p1, NULL, a_p1, NULL, h_p1 },
+    { "Preset 3",       UI_ACTION, v_p2, NULL, a_p2, NULL, h_p2 },
+    { "Preset 4",       UI_ACTION, v_p3, NULL, a_p3, NULL, h_p3 },
+    { "",               UI_INFO,   NULL, NULL, NULL, NULL },
+    { "OCT+ loads (saves into an", UI_INFO, NULL, NULL, NULL, NULL },
+    { "empty slot); hold OCT+ for", UI_INFO, NULL, NULL, NULL, NULL },
+    { "load / save here / clear.", UI_INFO, NULL, NULL, NULL, NULL },
+    { "rt = routes on, ch = keyboard", UI_INFO, NULL, NULL, NULL, NULL },
+    { "channel. Pairing is not saved.", UI_INFO, NULL, NULL, NULL, NULL },
 };
-static ui_menu pre_menu = { pre_items, 16, 0, 0 };
-static void pre_enter(void) { ui_menu_reset(&pre_menu); }
+static ui_menu pre_menu = { pre_items, 10, 0, 0, "OCT+:load/save hold:more" };
+static void pre_enter(void) { ui_menu_enter(&pre_menu); pre_refresh(); }
 static void pre_draw(void) { ui_menu_draw(&pre_menu, "Presets"); }
 static void pre_event(const mx_event *e) { ui_menu_event(&pre_menu, e); }
 static const ui_page page_presets = { "Presets", pre_enter, pre_draw, pre_event, NULL };
+
+/* the slot's page */
+static int pslot_used(void) { return peek_ok[preset_slot]; }
+static void pslot_load(void) { ui_confirm(pre_q_load[preset_slot], do_load); }
+static void pslot_save(void) { ui_confirm(pre_q_save[preset_slot], do_save); }
+static void pslot_clear(void) { ui_confirm(pre_q_clear[preset_slot], do_clear); }
+static void v_pslot(char *b, int n) { v_pre(b, n, preset_slot); }
+static const ui_item pslot_items[] = {
+    { "Holds",      UI_INFO,   v_pslot, NULL, NULL, NULL },
+    { "Load",       UI_ACTION, NULL, NULL, pslot_load, pslot_used },
+    { "Save here",  UI_ACTION, NULL, NULL, pslot_save, NULL },
+    { "Clear",      UI_ACTION, NULL, NULL, pslot_clear, pslot_used },
+};
+static ui_menu pslot_menu = { pslot_items, 4, 0, 0, NULL };
+static const char *const pslot_titles[4] = { "Preset 1", "Preset 2", "Preset 3", "Preset 4" };
+static void pslot_enter(void) { ui_menu_enter(&pslot_menu); }
+static void pslot_draw(void) { ui_menu_draw(&pslot_menu, pslot_titles[preset_slot]); }
+static void pslot_event(const mx_event *e) { ui_menu_event(&pslot_menu, e); }
+static const ui_page page_preset_opt = { "Preset", pslot_enter, pslot_draw, pslot_event, NULL };
 
 /* ------------------------------------------------------------------ input test */
 /* Shows what the matrix scanner sees, for checking the position tables on a new unit:
@@ -926,11 +1097,10 @@ static void btn_name(char *b, int n, int id)
 static void input_enter(void) { memset(enc_count, 0, sizeof enc_count); last_event[0] = 0; }
 static void input_draw(void)
 {
-    extern mx_state *matrix_state(void);
     mx_state *mx = matrix_state();
     char l[UI_COLS + 1], nm[12];
     int c, r, n, row = 1;
-    ui_row_inv(0, " Input test        HOME:leave");
+    ui_title("Input test");
     /* raw closed cells */
     n = snprintf(l, sizeof l, " cells:");
     for (c = 0; c < MX_COLS; c++)
@@ -952,7 +1122,8 @@ static void input_draw(void)
     ui_row((u16)row++, l, UI_C_DIM, UI_C_BG);
     snprintf(l, sizeof l, " frames %u  drops %u", (unsigned)mx->frames, (unsigned)mx->dropped);
     ui_row((u16)row++, l, UI_C_DIM, UI_C_BG);
-    while (row < UI_ROWS) ui_row((u16)row++, "", UI_C_TXT, UI_C_BG);
+    while (row < UI_ROWS - 1) ui_row((u16)row++, "", UI_C_TXT, UI_C_BG);
+    ui_row(UI_ROWS - 1, "HOME:leave", UI_C_DIM, UI_C_BG);
 }
 static void input_event(const mx_event *e)
 {
@@ -976,5 +1147,5 @@ const ui_page *ui_pages[PAGE_COUNT] = {
     &page_splash, &page_main, &page_routes, &page_log, &page_ble, &page_scan, &page_usb,
     &page_system, &page_display, &page_filters, &ui_page_confirm, &page_input, &page_keyboard,
     &page_route_opt, &page_inputs, &page_buttons, &page_presets, &page_composer, &page_connections,
-    &page_stats, &page_recorder, &page_reference, &page_clock,
+    &page_stats, &page_recorder, &page_reference, &page_clock, &page_preset_opt, &page_perform,
 };
