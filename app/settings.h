@@ -8,6 +8,8 @@
 #define FM1_SETTINGS_ID       10            /* syscfg user id, 1..59 */
 #define FM1_PRESET_COUNT      4
 #define FM1_PRESET_ID(n)      (11 + (n))    /* preset slots: ids 11..14 */
+#define FM1_PRESET_NAMES_ID   16            /* the four slots' names, one record (health is 15) */
+#define FM1_PRESET_NAME_LEN   12            /* printable ASCII, no terminator stored */
 #define FM1_SETTINGS_MAGIC    0x314D4631u   /* "1FM1" */
 #define FM1_SETTINGS_VERSION  9
 
@@ -49,7 +51,8 @@ typedef struct {
     uint8_t  merge_guard;       /* note-collision guard on the outputs */
     uint8_t  kbd_vel_source;    /* 0 fixed, 1 MASTER pot */
     uint8_t  ble_host_auto;     /* host mode: reconnect to the last device by itself */
-    uint8_t  pad2[2];
+    uint8_t  log_hide;          /* MIDI log: the kinds it does not list, MIDILOG_HIDE_* (a pad byte before: 0 = all) */
+    uint8_t  pad2;
     uint16_t crc;               /* upd_crc16 over everything before it */
 } fm1_settings;                 /* 212 bytes */
 
@@ -71,6 +74,9 @@ int  settings_preset_save(int slot);                     /* current settings -> 
 int  settings_preset_load(int slot);                     /* slot -> current settings (caller applies); 0 = ok */
 int  settings_preset_clear(int slot);
 int  settings_preset_peek(int slot, fm1_settings *out);  /* the slot's snapshot without applying it; 0 = ok */
+/* names, kept apart from the snapshots (a name survives a save into its slot; a clear drops it) */
+const char *settings_preset_name(int slot);              /* "" when none */
+int  settings_preset_set_name(int slot, const char *name, int len);  /* printable ASCII kept, cut at 12; 0 = ok */
 
 /* platform hooks (settings_port.c on the SDK, the test on the host) */
 int  settings_port_read(uint16_t id, void *buf, uint16_t len);        /* bytes read, <= 0 if none */

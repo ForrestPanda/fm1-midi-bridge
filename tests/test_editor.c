@@ -22,9 +22,11 @@ void editor_port_send_midi(int port, const uint8_t *bytes, uint32_t n) { sent_po
 static logring ring;
 const struct logring *editor_port_log(void) { return &ring; }
 void editor_port_sysinfo(editor_sysinfo *si) { si->uptime_ms = 1234; si->boots = 5; si->minimal = 1; }
-static uint8_t blob[256]; static int blob_len; static uint8_t pblob[4][256]; static int pblob_len[4];
-int settings_port_read(uint16_t id, void *buf, uint16_t len) { uint8_t *b = id == FM1_SETTINGS_ID ? blob : pblob[id - 11]; int *bl = id == FM1_SETTINGS_ID ? &blob_len : &pblob_len[id - 11]; if (!*bl) return -1; if (len > *bl) len = (uint16_t)*bl; memcpy(buf, b, len); return len; }
-int settings_port_write(uint16_t id, const void *buf, uint16_t len) { uint8_t *b = id == FM1_SETTINGS_ID ? blob : pblob[id - 11]; int *bl = id == FM1_SETTINGS_ID ? &blob_len : &pblob_len[id - 11]; memcpy(b, buf, len); *bl = len; return len; }
+static uint8_t blob[256]; static int blob_len; static uint8_t pblob[5][256]; static int pblob_len[5];   /* presets 11..14, names 16 */
+static int pidx(uint16_t id) { return id == FM1_PRESET_NAMES_ID ? 4 : id - 11; }
+static int name_writes;
+int settings_port_read(uint16_t id, void *buf, uint16_t len) { uint8_t *b = id == FM1_SETTINGS_ID ? blob : pblob[pidx(id)]; int *bl = id == FM1_SETTINGS_ID ? &blob_len : &pblob_len[pidx(id)]; if (!*bl) return -1; if (len > *bl) len = (uint16_t)*bl; memcpy(buf, b, len); return len; }
+int settings_port_write(uint16_t id, const void *buf, uint16_t len) { uint8_t *b = id == FM1_SETTINGS_ID ? blob : pblob[pidx(id)]; int *bl = id == FM1_SETTINGS_ID ? &blob_len : &pblob_len[pidx(id)]; if (id == FM1_PRESET_NAMES_ID) name_writes++; memcpy(b, buf, len); *bl = len; return len; }
 uint32_t settings_port_now_ms(void) { return 0; }
 
 static uint32_t frame(uint8_t *out, uint8_t cmd, const uint8_t *payload, uint32_t n, int packed)
@@ -46,7 +48,7 @@ int main(void)
     CHECK(offsetof(fm1_settings, backlight_idx) == 10 && offsetof(fm1_settings, invert) == 11 && offsetof(fm1_settings, ble_mode) == 12);
     CHECK(offsetof(fm1_settings, ble_host_pair) == 13 && offsetof(fm1_settings, host_peer) == 14 && offsetof(fm1_settings, ble_link_mode) == 21);
     CHECK(offsetof(fm1_settings, kbd_enabled) == 22 && offsetof(fm1_settings, kbd_channel) == 23 && offsetof(fm1_settings, kbd_octave) == 24 && offsetof(fm1_settings, kbd_velocity) == 25);
-    CHECK(offsetof(fm1_settings, route) == 26 && offsetof(fm1_settings, input) == 90 && offsetof(fm1_settings, btn) == 106 && offsetof(fm1_settings, key) == 126 && offsetof(fm1_settings, fav) == 182 && offsetof(fm1_settings, clock_bpm) == 202 && offsetof(fm1_settings, crc) == 210 && offsetof(fm1_settings, crc) == sizeof(fm1_settings) - 2);
+    CHECK(offsetof(fm1_settings, route) == 26 && offsetof(fm1_settings, input) == 90 && offsetof(fm1_settings, btn) == 106 && offsetof(fm1_settings, key) == 126 && offsetof(fm1_settings, fav) == 182 && offsetof(fm1_settings, clock_bpm) == 202 && offsetof(fm1_settings, log_hide) == 208 && offsetof(fm1_settings, crc) == 210 && offsetof(fm1_settings, crc) == sizeof(fm1_settings) - 2);
 
     settings_init();
     n = frame(f, 0x01, NULL, 0, 0);
@@ -82,6 +84,21 @@ int main(void)
       n = frame(f, 0x05, NULL, 0, 0); editor_handle(f, n); CHECK(last[7] == 1);
       settings_get()->routes = 0; n = frame(f, 0x07, &slot, 1, 0); editor_handle(f, n); CHECK(last[6] == 0 && settings_get()->routes == ROUTE_TRS_USB && applied == 2);
       slot = 9; n = frame(f, 0x07, &slot, 1, 0); editor_handle(f, n); CHECK(last[6] == 1); }
+    /* preset names: none at first, set (unprintable bytes dropped, cut at 12, trailing spaces trimmed),
+     * the same name again writes nothing, kept across a reload, a save keeps it, a clear drops it */
+    n = frame(f, 0x0E, NULL, 0, 0); editor_handle(f, n);
+    CHECK(last[5] == 0x4E && last[6] == 0 && last_n == 8 + 4 * FM1_PRESET_NAME_LEN && last[7] == 0);
+    { uint8_t slot, pl[20] = { 2, 'L', 'i', 'v', 'e', 0x01, ' ', 's', 'e', 't', ' ', 'B', '-', 'x', 'y', 'z' };
+      n = frame(f, 0x0E, pl, 16, 0); editor_handle(f, n);
+      CHECK(last[6] == 0 && memcmp(last + 7 + 2 * FM1_PRESET_NAME_LEN, "Live set B-x", 12) == 0 && name_writes == 1);
+      n = frame(f, 0x0E, pl, 16, 0); editor_handle(f, n); CHECK(name_writes == 1);
+      memcpy(pl, (uint8_t[]){ 1, 'G', 'i', 'g', ' ', ' ' }, 6); n = frame(f, 0x0E, pl, 6, 0); editor_handle(f, n);
+      CHECK(strcmp(settings_preset_name(1), "Gig") == 0);
+      pl[0] = 7; n = frame(f, 0x0E, pl, 2, 0); editor_handle(f, n); CHECK(last[6] == 1);
+      settings_init(); CHECK(strcmp(settings_preset_name(1), "Gig") == 0 && strcmp(settings_preset_name(2), "Live set B-x") == 0);
+      slot = 1; n = frame(f, 0x06, &slot, 1, 0); editor_handle(f, n); CHECK(strcmp(settings_preset_name(1), "Gig") == 0);
+      n = frame(f, 0x08, &slot, 1, 0); editor_handle(f, n); CHECK(settings_preset_name(1)[0] == 0 && strcmp(settings_preset_name(2), "Live set B-x") == 0);
+      pl[0] = 2; n = frame(f, 0x0E, pl, 1, 0); editor_handle(f, n); CHECK(last[6] == 0 && settings_preset_name(2)[0] == 0); }
     /* send raw MIDI to a port */
     { uint8_t pl[1 + 8]; uint8_t midi[3] = {0x90, 60, 100}; pl[0] = 3; uint32_t k = pack7(midi, 3, pl + 1);
       n = frame(f, 0x09, pl, 1 + k, 0); editor_handle(f, n);
@@ -119,6 +136,11 @@ int main(void)
     CHECK(last[5] == 0x4B);
     d = unpack7(last + 6, last_n - 7, dec, sizeof dec);
     CHECK(d == sizeof(editor_sysinfo) && dec[0] == (1234 & 0xFF) && dec[offsetof(editor_sysinfo, boots)] == 5 && dec[offsetof(editor_sysinfo, minimal)] == 1);
+    /* 0x0D: host devices (the weak default: state 0, none) */
+    n = frame(f, 0x0D, NULL, 0, 0); editor_handle(f, n);
+    CHECK(last[5] == 0x4D);
+    d = unpack7(last + 6, last_n - 7, dec, sizeof dec);
+    CHECK(d == 2 && dec[0] == 0 && dec[1] == 0);
     /* not ours */
     { uint8_t other[] = {0xF0, 0x7E, 0x7F, 0x09, 0x01, 0xF7}; CHECK(!editor_is_frame(other, sizeof other)); }
     if (fails) { printf("%d failure(s)\n", fails); return 1; }

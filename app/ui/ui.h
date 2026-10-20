@@ -44,12 +44,14 @@ void ui_clear(void);
 void ui_status_short(char *buf, int n);                   /* "U:ok B:adv" */
 
 /* battery: read once a second from the divider on PB1 (uncalibrated: verify on hardware) */
-u16  ui_battery_mv(void);
+u16  ui_battery_mv(void);          /* at the pin (the cell is about twice that: a 1:2 divider, by its readings) */
+u16  ui_battery_raw(void);         /* PB1, 10-bit, smoothed */
 void ui_battery_bar(char *buf, int n);                    /* "[##..]" */
 int  ui_battery_low(void);
 
 keys_state *ui_keys(void);
 void ui_keys_reload(void);
+void ui_settings_changed(void);                           /* from another task: the UI applies invert, keys, redraw at its next tick */
 void ui_octave_shift(int delta);                          /* the keyboard's octave, -3..3 */
 
 /* colours: the title row is a dark blue band with white text (the link status in a

@@ -6,18 +6,29 @@ Firmware that turns the M-VAVE FM-1 into a MIDI bridge:
   tablet or computer connects to)
 - **BLE MIDI -> USB MIDI** and **USB MIDI -> BLE MIDI** (the FM-1 plugged into a
   computer as a class-compliant USB MIDI device)
-- later, maybe: the FM-1 as a BLE *central* that pairs with a BLE keyboard and
-  forwards it to USB
+- **host mode**: the FM-1 as a BLE *central* that connects to a BLE MIDI keyboard and
+  forwards it to USB (and USB back to the keyboard)
 
 The FM-1 has **no TRS MIDI OUT**: the 3.5 mm jack is MIDI IN only (see
 `docs/hardware.md`). So "BLE -> TRS" is not possible without a hardware mod;
 "BLE -> USB" is the reverse direction this project targets.
 
-Status: **runs on the first FM-1 since 2026-10-19** (`docs/recovery.md`, "The bridge on the
-first unit"): the full build boots, shows its UI on the panel, enumerates on USB, advertises BLE
-MIDI, takes keys, buttons and knobs, carries BLE MIDI from a phone to USB, and installs and
-uninstalls through its own update entry. TRS MIDI in and the USB/TRS to BLE directions are
-still to be exercised on the unit. The MIDI codecs, the router and the update entry pass host tests.
+Status: **alpha, tested on one FM-1** (since 2026-10-19; `docs/recovery.md`, "The bridge on the
+first unit"; the test results are in `CHANGELOG.md`). Verified on the unit:
+
+- TRS in to USB and BLE (`tools/trs_test.py`, ten tests: clock up to 300 bpm, saturation, running
+  status, SysEx, garbage, line breaks); USB to BLE and back, bursts of 600 messages at once whole
+  (`tools/usb_to_ble.py`); an Android phone app both ways; pairing, bonds and Forget bonds.
+- Host mode with a real keyboard (through a Casio WU-BT10 adapter) and with the PC as one: notes both ways,
+  pairing, a keyboard that never pairs, a keyboard that forgot its bond.
+- The UI on the panel: every page used by hand, including the MIDI log and its filters, the
+  Composer, the Recorder, Statistics, Panic, presets with names, the battery bar, the backlight.
+- The web editor (settings, presets, backup, firmware install), the soft key into the mask ROM,
+  installs and reinstalls through its own update entry.
+
+Not yet: iOS, M-VAVE's own updater (M-UPGRADE) taking the unit back to stock, a meter on the
+battery, the key matrix of other production batches. The MIDI codecs, the router, the editor and
+the update entry also pass host tests.
 
 ## Build
 
@@ -48,6 +59,13 @@ fuzzed under ASan/UBSan with `sh tests/fuzz/run_fuzz.sh` (a couple of minutes;
 device that still enumerates into the mask-ROM download mode; `tools/fm1_flash.sh`
 dumps and restores the whole flash from there through jl-uboot-tool.
 
+## License
+
+MIT for our code, Apache-2.0 for the files derived from the AC79 SDK, GPL-3 for the
+packager fork and the loader it bundles (host-side and separate programs, never linked
+in); the firmware links JieLi's closed libraries from the SDK. The map is `LICENSE`, the
+authority per file its SPDX line. Not ready to share yet: `docs/plan.md`, "Before sharing".
+
 ## Why not a Felucca fork
 
 Felucca and its forks are bare-metal GPL-3 firmwares that never enable the radio.
@@ -75,7 +93,10 @@ for the FM-1 pin map and the update protocol. No Felucca code is copied.
 | `tools/package.sh`, `tools/install.sh` | packaging with the fork, install with Felucca's installer (external GPL tool) |
 | `tools/fm1_safe_install.sh` | the first install on a unit: identity, soft key, full dump and survey, then the install |
 | `tools/fm1_install_paced.py` | the installer with the host's SysEx paced (for a firmware whose USB ring is too small for a reply) |
-| `tools/fm1_editor.py` | the web editor's questions from the shell: info, counters, heap and stack margins, the device log |
+| `tools/fm1_editor.py` | the web editor's questions from the shell: info, counters, heap and stack margins, the device log; `set FIELD=VALUE` writes a setting (`set ble_mode=1`: host mode), `send` raw MIDI to a port, `host` the host mode's scan list and its connect / disconnect / scan buttons |
+| `tools/ble_midi_peripheral.py` | a BLE MIDI keyboard made of the PC's Bluetooth adapter (BlueZ over D-Bus): advertises the MIDI service, plays a note every so often once subscribed, prints what the central writes; the test keyboard for host mode |
+| `tools/usb_to_ble.py` | the USB to BLE route under test: the PC as the BLE central subscribes to the FM-1, a known sequence goes into its USB port, loss, order, latency and packet sizes are reported (`--gap 0`: one burst, `--clock BPM`: a MIDI clock under it, `--reverse`: BLE to USB) |
+| `tools/trs_tester/`, `tools/trs_test.py` | the TRS input under test: an STM32F4-Discovery (firmware on the TRS MIDI bridge project's board code) plays byte scripts on the FM-1's MIDI IN with microsecond timing (tip to PA2, ring to PA3); the tool predicts what the FM-1 forwards and checks USB and, with `--ble`, BLE |
 | `tools/dongle/` | the mask-ROM USB key: `stm32f4disco/` (verified on the first unit), `fm1_key.py` (RP2040 MicroPython, untested) |
 | `tools/mkapp.sh` | ELF -> `app.bin` (the four sections the SDK packer concatenates) |
 | `tools/fm1_recover.py`, `tools/fm1_flash.sh` | soft key / vendor request into the mask-ROM download mode; whole-flash dump and restore through jl-uboot-tool |

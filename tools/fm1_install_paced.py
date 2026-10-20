@@ -14,7 +14,7 @@ of SLICE bytes with a GAP between them; the kernel's rawmidi bridge writes each 
   fm1_install_paced.py PACKAGE.fwsc [--slice N] [--gap MS] [fm1_install.py options]
   fm1_install_paced.py --info
 
-Env: FM1_INSTALL  the fm1_install.py to drive (default: fm1-drummer's copy, else Felucca's).
+Env: FM1_INSTALL  the fm1_install.py to drive (default: fm1-backbeat's copy, else Felucca's).
 """
 import ctypes
 import os
@@ -25,7 +25,7 @@ import time
 
 here = os.path.dirname(os.path.abspath(__file__))
 top = os.path.abspath(os.path.join(here, "..", ".."))
-cand = [os.environ.get("FM1_INSTALL"), os.path.join(top, "fm1-drummer", "tools", "fm1_install.py"),
+cand = [os.environ.get("FM1_INSTALL"), os.path.join(top, "fm1-backbeat", "tools", "fm1_install.py"),
         os.path.join(top, "..", "Felucca", "tools", "fm1_install.py")]
 INSTALL = next((c for c in cand if c and os.path.isfile(c)), None)
 if not INSTALL:

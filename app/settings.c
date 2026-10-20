@@ -25,7 +25,7 @@ void settings_defaults(fm1_settings *s)
     s->ble_mode = BLE_MODE_PERIPHERAL;
     s->ble_host_pair = 0;
     s->panic_on_disconnect = 1;
-    s->clock_bpm = 120; s->clock_to = 3; s->merge_guard = 1; s->kbd_vel_source = 0; s->ble_host_auto = 1;
+    s->clock_bpm = 120; s->clock_to = 3; s->merge_guard = 1; s->kbd_vel_source = 0; s->ble_host_auto = 1; s->log_hide = 0;
     s->kbd_enabled = 1;
     s->kbd_channel = 0;
     s->kbd_octave = 0;
@@ -92,9 +92,58 @@ static void seal(fm1_settings *s)
     s->crc = (uint16_t)crc16_1021((const uint8_t *)s, offsetof(fm1_settings, crc), 0);
 }
 
+/* preset names: magic, 4 x 12 bytes, CRC */
+#define NAMES_MAGIC 0x4D4E5046u                    /* "FPNM" */
+static char names[FM1_PRESET_COUNT][FM1_PRESET_NAME_LEN + 1];
+
+static void names_load(void)
+{
+    uint8_t buf[4 + FM1_PRESET_COUNT * FM1_PRESET_NAME_LEN + 2];
+    uint32_t magic;
+    int i;
+    memset(names, 0, sizeof names);
+    if (settings_port_read(FM1_PRESET_NAMES_ID, buf, sizeof buf) != (int)sizeof buf) return;
+    memcpy(&magic, buf, 4);
+    if (magic != NAMES_MAGIC || crc16_1021(buf, sizeof buf - 2, 0) != rd16(buf + sizeof buf - 2)) return;
+    for (i = 0; i < FM1_PRESET_COUNT; i++) memcpy(names[i], buf + 4 + i * FM1_PRESET_NAME_LEN, FM1_PRESET_NAME_LEN);
+}
+
+static int names_store(void)
+{
+    uint8_t buf[4 + FM1_PRESET_COUNT * FM1_PRESET_NAME_LEN + 2];
+    uint32_t magic = NAMES_MAGIC;
+    uint16_t crc;
+    int i;
+    memcpy(buf, &magic, 4);
+    for (i = 0; i < FM1_PRESET_COUNT; i++) memcpy(buf + 4 + i * FM1_PRESET_NAME_LEN, names[i], FM1_PRESET_NAME_LEN);
+    crc = crc16_1021(buf, sizeof buf - 2, 0);
+    buf[sizeof buf - 2] = (uint8_t)crc; buf[sizeof buf - 1] = (uint8_t)(crc >> 8);
+    return settings_port_write(FM1_PRESET_NAMES_ID, buf, sizeof buf) == (int)sizeof buf ? 0 : -1;
+}
+
+const char *settings_preset_name(int slot)
+{
+    return slot >= 0 && slot < FM1_PRESET_COUNT ? names[slot] : "";
+}
+
+int settings_preset_set_name(int slot, const char *name, int len)
+{
+    char clean[FM1_PRESET_NAME_LEN + 1];
+    int i, k = 0;
+    if (slot < 0 || slot >= FM1_PRESET_COUNT) return -1;
+    memset(clean, 0, sizeof clean);
+    for (i = 0; i < len && k < FM1_PRESET_NAME_LEN; i++)
+        if (name[i] >= 0x20 && name[i] <= 0x7E) clean[k++] = name[i];
+    while (k > 0 && clean[k - 1] == ' ') clean[--k] = 0;
+    if (memcmp(names[slot], clean, sizeof clean) == 0) return 0;  /* no flash write for the same name */
+    memcpy(names[slot], clean, sizeof clean);
+    return names_store();
+}
+
 void settings_init(void)
 {
     load_id(FM1_SETTINGS_ID, &cur);
+    names_load();
     dirty = 0;
 }
 
@@ -137,6 +186,7 @@ int settings_preset_clear(int slot)
 {
     uint8_t zero[8] = {0};
     if (slot < 0 || slot >= FM1_PRESET_COUNT) return -1;
+    if (names[slot][0]) settings_preset_set_name(slot, "", 0);
     return settings_port_write((uint16_t)FM1_PRESET_ID(slot), zero, sizeof zero) > 0 ? 0 : -1;
 }
 

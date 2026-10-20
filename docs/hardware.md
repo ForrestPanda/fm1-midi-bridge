@@ -23,14 +23,15 @@ aroum/fm1-custom-fw teardown notes and product reviews. Facts, not code. Items m
 - 3.5 mm TRS **MIDI IN** only: the jack next to the USB-C feeds an optocoupler marked
   `OCIC P2362` (TLP2362 class, designator `PC1` on aroum's photos) through its series
   resistors; both tip and ring go to the opto, nothing on the board drives a MIDI OUT. See
-  "Adding a MIDI OUT" below.
+  "Adding a MIDI OUT" below. **Type A (verified 2026-10-19):** the Ampero II Stage's MIDI OUT
+  (Type A) into it over a plain stereo 3.5 mm cable works, with BackBeat and with the bridge. A 3.3 V current loop straight from two STM32 pins (tip = sink on the UART TX, ring = source held high), no resistors outside, drives it too (2026-10-20): the board's own series resistors limit the current.
 - 3.5 mm TRS stereo audio out. Built-in speaker. Battery, charged over USB.
 
 ## Pins (from Felucca HAL)
 
 | Function | Pins |
 | --- | --- |
-| TRS MIDI IN | **PH8** -> input channel 1 -> UART1 RX, 31250 baud (UART clock PLL48M, BAUD = 48e6/31250/4 - 1 = 383). RX DMA ring, polled (Felucca). The bridge (`app/trs_uart.c`) adds the RX and timeout interrupts: CON0 bit 3 RX IE (RXCNT bytes since the last latch), bit 5 timeout IE (OTCNT UART clocks of silence after a byte), bit 7 latches the count into HRXCNT, bits 10/12 clear the pendings (11/14); IRQ 20. **Interrupts: verify on hardware** (the polled set-up is Felucca's, the IRQ bits are the SDK driver's as fm1-emu models them). |
+| TRS MIDI IN | **PH8** -> input channel 1 -> UART1 RX, 31250 baud (UART clock PLL48M, BAUD = 48e6/31250/4 - 1 = 383). RX DMA ring, polled (Felucca). The bridge (`app/trs_uart.c`) adds the RX and timeout interrupts: CON0 bit 3 RX IE (RXCNT bytes since the last latch), bit 5 timeout IE (OTCNT UART clocks of silence after a byte), bit 7 latches the count into HRXCNT, bits 10/12 clear the pendings (11/14); IRQ 20. Both verified on the first unit, 2026-10-19 afternoon: the polled ring (BackBeat, two whole songs from the Ampero) and the interrupts (the bridge, TRS in to BLE). **2026-10-20 (the TRS tester, `tools/trs_tester/`):** HRXCNT holds the previous latch's count for a few cycles after bit 7 is set: read it straight away and every byte is handed over one late (JieLi's sequence works: latch, clear timeout pending, clear RX pending, nops, read). OTCNT in UART clocks (48000 = 1 ms) works; with RXCNT 1 there is about one RX interrupt per burst, not per byte, and the timeout delivers the rest. No framing-error flag shows in CON0 or CON1: a line break arrives as one 00 byte (PH8 still reads low 1 ms later). The receiver takes the baud rate 4 % off either way. |
 | Key/button/encoder matrix | 11 columns via 2x 74HC595 (PA4 SER, PA3 SRCLK, PA1 RCLK); rows PA0, PA5..PA8, PB7, pull-ups, active low. Encoders: clockwise = contact B closes first (Felucca's decoder; fm1-emu turns the same way). |
 | LEDs | PH6, PH9, PA9, PA10 (per column, rows PA7/PA8/PA5/PA6) |
 | LCD | SPI1: PC9 CLK, PC10 DO, PC7 CS, PC8 D/C; backlight PA2 active low, **and PA2 is also the key matrix 595s' /OE** (Felucca found it on 1.1.5, the first unit showed it again 2026-10-19): PA2 high = no button, key or knob reads; the screen-off is the panel's sleep (DISPOFF/SLPIN), never PA2. **Verified 2026-10-19:** driven at register level only (SPI1 CON 0x4021, BAUD 4, IOMAP CON1 bit 4, BUF for a byte, ADR/CNT for a block; `app/ui/lcd.c`); the SDK's "spi1" device moved nothing to the panel, and the SPI DMA cannot read a flash address (bus hang, watchdog loop) |

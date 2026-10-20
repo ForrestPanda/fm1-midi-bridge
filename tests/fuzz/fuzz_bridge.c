@@ -41,7 +41,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *d, size_t n)
             midi_parser_feed(&p, d + pos, len); pos += len;
             break;
         }
-        case 5: sim.usb_configured = a & 1; sim.ble_ready = (a >> 1) & 1; sim.ble_max = (uint16_t)(5 + (a >> 2) * 4); pos++; break;
+        case 5: sim.usb_configured = a & 1; sim.ble_ready = (a >> 1) & 1; sim.ble_max = (uint16_t)(5 + ((a >> 2) & 31) * 8);
+                sim.ble_full = a >> 7; pos++; break;                                   /* a busy stack: the BLE queue fills */
         case 6: {
             fm1_settings *s = settings_get();
             if (left >= 6) {

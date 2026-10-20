@@ -18,6 +18,11 @@
  *                  read under the test word, u16 port A DIR, u16 port A OUT): the key matrix as the scan interrupt sees
  *                  it (zeros on a build without the matrix). With a payload: word (2 x 7 bits, low first) and ticks
  *                  (2 x 7 bits): put that word on the shift registers for that many scan ticks (a test)
+ *   0x0D [op [arg]]  host mode (BLE central) -> 0x4D + pack7(u8 state, u8 count, count x {u8 addr_type, u8 addr[6],
+ *                  s8 rssi, char name[20]}): the devices the scan found, in the Scan page's order. op 1 + index:
+ *                  connect to that device; op 2: disconnect; op 3 + on/off: scan. The list comes back either way.
+ *   0x0E [slot name...]  preset names -> 0x4E + status + 4 x 12 bytes (ASCII, 0-padded). With a payload: slot,
+ *                  then up to 12 bytes of printable ASCII (none clears the name); status 0 ok, 1 bad slot, 2 write.
  * Payloads are 8-to-7 packed (upd_pack7). The device checks magic, size and
  * version on set, applies the settings at once and writes them a second later.
  */
@@ -56,3 +61,4 @@ const struct logring *editor_port_log(void);                 /* the device log r
 void editor_port_sysinfo(editor_sysinfo *si);
 void editor_port_matrix(uint32_t *ticks, uint32_t *pa, uint32_t *pb, uint8_t *raw, uint32_t ncols);   /* weak default: zeros */
 void editor_port_matrix_force(uint32_t word, uint32_t ticks);                                           /* weak default: nothing */
+uint32_t editor_port_host(uint8_t op, uint8_t arg, uint8_t *out, uint32_t max);                          /* weak default: state 0, none */

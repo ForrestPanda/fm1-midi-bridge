@@ -27,6 +27,7 @@ arrives from the device, which makes it a second MIDI monitor.
 | 0x06 / 0x07 / 0x08 + slot | 0x46 / 0x47 / 0x48 | save / load / clear preset slot 0..3; one status byte |
 | 0x09 + port + pack7(bytes) | 0x49 | send raw MIDI bytes to port 1 = USB, 2 = BLE, 3 = both, bypassing routes |
 | 0x0A + from (4 x 7 bits, LSB first; optional) | 0x4A | pack7(u32 total, u32 from, bytes): the device log from absolute offset `from`, at most 200 bytes; `total` is the count ever written, `from` the offset actually served (clamped to the 4 KB the device still holds). Repeat with `from + bytes` until `from` reaches `total` |
+| 0x0D + op + arg (both optional) | 0x4D | pack7(u8 host state, u8 count, count x {u8 addr type, u8 addr[6], s8 rssi, char name[20]}): the BLE host mode's scan list in the Scan page's order. op 1 + index connects to that device, op 2 disconnects, op 3 + 0/1 stops or starts the scan; the list comes back either way. `tools/fm1_editor.py host` |
 | 0x0B sysinfo | 0x4B | pack7(`editor_sysinfo`): uptime ms, free heap, bridge and UI task stack margins (words never used), boots, watchdog resets, software resets, bridge stalls, last reset reason, minimal-build flag |
 
 pack7 is the same 8-to-7, LSB-first packing the M-VAVE update protocol uses. The
@@ -57,4 +58,5 @@ for the loader to enumerate (its identity starts with `ota-`), step 2 served to 
 loader until it has written the app area, then a wait for the new firmware to come back
 and report its identity. The page re-opens the MIDI ports as the device re-enumerates.
 If a step stops, replug the cable and click Install again: the loader resumes where it
-was and nothing is lost. Untested on hardware until the first unit arrives.
+was and nothing is lost. Verified on the first unit 2026-10-20: a reinstall of `FM-1_931` from
+Chrome, "done: FM-1_931", settings kept.

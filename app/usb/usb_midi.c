@@ -4,6 +4,7 @@
 #include "usb/usb_config.h"
 #include "app_config.h"
 #include "os/os_api.h"
+#include "asm/usb.h"                 /* usb_read_txcsr */
 #include "usb_midi.h"
 
 #define LOG_TAG_CONST       USB
@@ -172,6 +173,32 @@ int usb_midi_configured(const usb_dev usb_id)
     return midi_hdl[usb_id] && midi_hdl[usb_id]->configured;
 }
 
+/* The SDK's bulk write waits for the previous packet to leave the IN FIFO, and the host only
+ * takes it while some program reads the MIDI port (the Linux driver polls bulk IN only with
+ * a reader open): with none, the write blocks for good and the bridge loop with it (the
+ * first unit: a link-drop panic burst, two restarts by the stall monitor). So the FIFO is
+ * checked first. A host that is reading takes a packet within a few ms, so one still there
+ * after USB_TX_WAIT_MS marks the host as not reading: that packet stays (it goes out when a
+ * reader opens the port) and new ones are dropped at once, with no wait, until the FIFO is
+ * found empty again. A 3 ms bound lost replies on the first unit; 50 ms, yielding, did not.
+ * TxPktRdy is bit 0 of the Mentor USB TXCSR, which usb_read_txcsr() returns for the endpoint. */
+#define USB_TX_WAIT_TICKS   5                /* 10 ms ticks */
+#define MUSB_TXCSR_TXPKTRDY 0x0001
+static u8 host_not_reading;
+
+static int in_fifo_free(const usb_dev usb_id)
+{
+    int i;
+    if (!(usb_read_txcsr(usb_id, MIDI_EP_IN) & MUSB_TXCSR_TXPKTRDY)) { host_not_reading = 0; return 1; }
+    if (host_not_reading) return 0;
+    for (i = 0; i < USB_TX_WAIT_TICKS; i++) {
+        os_time_dly(1);
+        if (!(usb_read_txcsr(usb_id, MIDI_EP_IN) & MUSB_TXCSR_TXPKTRDY)) return 1;
+    }
+    host_not_reading = 1;
+    return 0;
+}
+
 u32 usb_midi_write(const usb_dev usb_id, const u8 *pkts, u32 len)
 {
     struct usb_midi_gadget *g = midi_hdl[usb_id];
@@ -181,6 +208,7 @@ u32 usb_midi_write(const usb_dev usb_id, const u8 *pkts, u32 len)
     os_mutex_pend(&g->tx_mutex, 0);
     while (off < len) {
         n = len - off > MAXP_SIZE_MIDI_BULK ? MAXP_SIZE_MIDI_BULK : len - off;
+        if (!g->configured || !in_fifo_free(usb_id)) break;
         n = usb_g_bulk_write(usb_id, MIDI_EP_IN, pkts + off, n);
         if (n == 0) break;
         off += n;

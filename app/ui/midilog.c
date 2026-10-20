@@ -4,6 +4,7 @@
 #include "midilog.h"
 #include "lcd.h"
 #include "midi/decode.h"
+#include "settings.h"
 #include <stdio.h>
 
 #define COLS   (LCD_W / 8)          /* 30 with the 8x14 font */
@@ -59,9 +60,21 @@ static void format(char *line, int port, int out, const midi_msg *m)
     }
 }
 
+static u8 hide_bit(const midi_msg *m)
+{
+    u8 s = m->b[0] & 0xF0;
+    if (m->kind != MIDI_KIND_CHANNEL) return MIDILOG_HIDE_OTHER;
+    if (s == 0x80 || s == 0x90) return MIDILOG_HIDE_NOTES;
+    if (s == 0xC0) return MIDILOG_HIDE_PC;
+    if (s == 0xB0) return MIDILOG_HIDE_CC;
+    return MIDILOG_HIDE_OTHER;
+}
+
 static void store(int port, int out, const midi_msg *m)
 {
     u8 *raw = raw_ring[head % RING];
+    if (settings_get()->log_hide & hide_bit(m))
+        return;                                         /* a kind the page does not list */
     if (m->kind == MIDI_KIND_SYSEX && !(m->flags & MIDI_SYSEX_START))
         return;                                         /* only the first chunk of a SysEx */
     raw[0] = (u8)(port | (out ? 0x80 : 0) | (m->kind << 4) | ((m->flags & 3) << 6));
@@ -135,6 +148,15 @@ void midilog_status(const char *s)
 void midilog_status_from(const midi_router *r, int usb_ok, int ble_ok)
 {
     char s[COLS + 1];
+    u8 hide = settings_get()->log_hide;
+    if (hide) {                                         /* the filter in the routes' place: N P C O, '-' hidden */
+        snprintf(s, sizeof s, "USB:%s BLE:%s  show %c%c%c%c",
+                 usb_ok ? "ok" : "--", ble_ok ? "ok" : "--",
+                 hide & MIDILOG_HIDE_NOTES ? '-' : 'N', hide & MIDILOG_HIDE_PC ? '-' : 'P',
+                 hide & MIDILOG_HIDE_CC ? '-' : 'C', hide & MIDILOG_HIDE_OTHER ? '-' : 'O');
+        if (strcmp(s, status) != 0) midilog_status(s);
+        return;
+    }
     snprintf(s, sizeof s, "USB:%s BLE:%s  %s%s%s%s",
              usb_ok ? "ok" : "--", ble_ok ? "ok" : "--",
              router_enabled(r, MIDI_PORT_TRS, MIDI_PORT_BLE) ? "TB " : "",

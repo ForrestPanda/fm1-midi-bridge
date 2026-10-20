@@ -5,6 +5,8 @@
 #include "ble_midi.h"
 #include "ble_host.h"
 #include "settings.h"
+#include "health.h"
+#include "fm1_log.h"
 
 extern u16 bt_ble_is_connected(void);
 
@@ -60,7 +62,11 @@ void ble_port_set_link_mode(int mode)
 void ble_port_boot(void)
 {
     ble_midi_set_link_mode(settings_get()->ble_link_mode);
-    if (settings_get()->ble_mode == BLE_MODE_HOST) ble_port_set_mode(BLE_MODE_HOST);
+    if (settings_get()->ble_mode != BLE_MODE_HOST) return;
+    /* a stored host mode that crashes at boot must not loop: after a boot that never ran
+     * clean (20 s up, health.c) the FM-1 comes up as the peripheral and says so */
+    if (health_get()->unclean >= 2) { fm1_log("host mode not entered: the previous boot did not run clean; turn it on by hand"); return; }
+    ble_port_set_mode(BLE_MODE_HOST);
 }
 
 const char *ble_port_state_text(void)

@@ -7,6 +7,7 @@
 #include "fm1_log.h"
 #include "health.h"
 #include "bt_ble/ble_port.h"
+#include "bt_ble/ble_host.h"
 #include "usb/usb_midi.h"
 #include "midi/midi_msg.h"
 #include "midi/router.h"
@@ -29,11 +30,9 @@ void editor_port_apply(void)
     settings_apply_router(s, bridge_router());
     usb_port_apply();
 #if !FM1_MINIMAL
-    ui_keys_reload();
     ble_port_set_link_mode(s->ble_link_mode);
     ble_port_set_mode(s->ble_mode);
-    lcd_invert(s->invert);
-    ui_invalidate();
+    ui_settings_changed();                       /* the panel and the keys: by the UI task, which owns them */
 #endif
 }
 
@@ -42,13 +41,41 @@ void editor_port_status(editor_status *st)
     midi_router *r = bridge_router();
     int i;
     for (i = 0; i < 4; i++) { st->count_in[i] = r->count_in[i]; st->count_out[i] = r->count_out[i]; }
-    st->dropped = r->count_dropped + bridge_ble_drops();
+    st->dropped = r->count_dropped + bridge_ble_drops() + bridge_usb_drops();
     st->usb_ok = (u8)usb_midi_configured(0);
     st->ble_ok = (u8)ble_port_ready();
     st->ble_state = ble_host_active() ? 2 : bt_ble_is_connected() ? 1 : 0;
 }
 
 const struct logring *editor_port_log(void) { return fm1_log_ring(); }
+
+/* the Scan page's list and buttons over SysEx (a bench without the panel in reach; the web editor) */
+uint32_t editor_port_host(uint8_t op, uint8_t arg, uint8_t *out, uint32_t max)
+{
+#if FM1_BLE_HOST_EN && !FM1_MINIMAL
+    ble_host_device list[BLE_HOST_MAX_DEVICES];
+    int n, i;
+    uint32_t k = 2;
+    if (op == 1) ble_host_connect(arg);
+    else if (op == 2) ble_host_disconnect();
+    else if (op == 3) ble_host_scan(arg);
+    n = ble_host_devices(list, BLE_HOST_MAX_DEVICES);
+    out[0] = (uint8_t)ble_host_state();
+    out[1] = 0;
+    for (i = 0; i < n && k + 28 <= max; i++, k += 28) {
+        out[k] = list[i].addr_type;
+        memcpy(out + k + 1, list[i].addr, 6);
+        out[k + 7] = (uint8_t)list[i].rssi;
+        memcpy(out + k + 8, list[i].name, 20);
+        out[1]++;
+    }
+    return k;
+#else
+    (void)op; (void)arg; (void)max;
+    out[0] = out[1] = 0;
+    return 2;
+#endif
+}
 
 void editor_port_sysinfo(editor_sysinfo *si)
 {

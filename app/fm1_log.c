@@ -14,10 +14,32 @@ const logring *fm1_log_ring(void) { return &ring; }
 /* SDK log framework user hook (apps/common/debug/debug.c leaves it to us under
  * CONFIG_USER_DEBUG_ENABLE). May run from any task or interrupt: a single byte
  * store and a counter bump, a torn byte under contention is acceptable here. */
+/* The SDK's library prints a task and heap table every minute (about 20 lines, seen on the
+ * first unit): it would push everything else out of the 4 KB ring within three minutes, so
+ * its lines are held back here. The block starts at a line holding "task run" and ends with
+ * the "[HEAP_MEM]left" line. Lines are gathered first; one longer than the buffer goes out in
+ * pieces, and two tasks printing at once may tear a line, which is acceptable here. */
+static char cur[160];
+static uint16_t cur_n;
+static uint8_t dropping;
+
+static int line_has(const char *needle)
+{
+    uint32_t k = (uint32_t)strlen(needle), i;
+    for (i = 0; i + k <= cur_n; i++)
+        if (memcmp(cur + i, needle, k) == 0) return 1;
+    return 0;
+}
+
 void log_putbyte(char c)
 {
     if (c == '\r') return;
-    logring_put(&ring, c);
+    if (cur_n < sizeof cur) cur[cur_n++] = c;
+    if (c != '\n' && cur_n < sizeof cur) return;
+    if (dropping) { if (line_has("[HEAP_MEM]left")) dropping = 0; }
+    else if (line_has("task run")) dropping = 1;
+    else logring_write(&ring, cur, cur_n);
+    cur_n = 0;
 }
 
 void fm1_log_raw(const char *s, uint32_t n) { logring_write(&ring, s, n); }

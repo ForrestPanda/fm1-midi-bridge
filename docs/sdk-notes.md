@@ -79,7 +79,18 @@ and optional SDRAM; the FM-1 has 1 MB and 512 KB RAM, so `__FLASH_SIZE__` must b
   hand or with BTstack's `compile_gatt.py` (BSD) from a `.gatt` file: one 128-bit
   primary service, one 128-bit characteristic READ | WRITE_WITHOUT_RESPONSE | NOTIFY |
   DYNAMIC, and its CCCD.
-- BLE central (host mode) is also there: `le_net_central.c`, `BT_NET_CENTRAL_EN`.
+- BLE central (host mode) is also there: `le_net_central.c`, `BT_NET_CENTRAL_EN`. What the
+  first unit taught (`app/bt_ble/ble_host.c`): `search_result_t` carries 128-bit UUIDs
+  big-endian, as written in the demo's `search_uuid_table`; a `ble_op_create_connection`
+  issued with no scan before it never completes (the demo connects from an advertising
+  report, after `ble_op_set_scan_param`, and so does ours); `ble_op_conn_param_request` is
+  the slave's L2CAP request (the central uses `ble_op_conn_param_update`; the wrong one reset
+  the chip); `l2cap_connection_update_request_just` is the hook that accepts or refuses the
+  peer's parameter request; `GAP_EVENT_ADVERTISING_REPORT` carries an `adv_report_t` at
+  `packet[2]`; the stack's `user_client_report_*` hooks are called from its task; `os_time_dly`
+  ticks are 10 ms. The SM: "fail select SC!!!" at boot means legacy pairing only, which works.
+- The SDK log hook `log_putbyte()` does receive the library's own printf (LL, SM, VM, USB, and a
+  task and heap table every minute, which `app/fm1_log.c` filters out).
 - Demo config: `TCFG_USER_BLE_ENABLE 1`, `TCFG_USER_BT_CLASSIC_ENABLE 0`.
 
 ## USB device (`apps/common/usb/device/`, driver in a lib)

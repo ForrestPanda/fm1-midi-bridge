@@ -6,13 +6,19 @@
  * The ring keeps 64 lines; the screen shows 16 and SELECT scrolls back through the
  * rest. midilog_add() is called by the bridge for every message (any task context,
  * it only writes into the ring); midilog_draw() renders what changed, from the UI
- * task, and is cheap when nothing changed. */
+ * task, and is cheap when nothing changed. Kinds hidden by settings.log_hide never enter
+ * the ring (the page's FX / SCL / ENV / LFO buttons): showing a kind again lists it from then on. */
 #pragma once
 #include "typedef.h"
 #include "midi/midi_msg.h"
 #include "midi/router.h"
 
 #define MIDILOG_RING 64
+
+#define MIDILOG_HIDE_NOTES  0x01            /* note on / off */
+#define MIDILOG_HIDE_PC     0x02            /* program change */
+#define MIDILOG_HIDE_CC     0x04            /* control change */
+#define MIDILOG_HIDE_OTHER  0x08            /* everything else: clock, SysEx, bend, aftertouch, system */
 
 void midilog_init(void);
 void midilog_add(int port, const midi_msg *m);

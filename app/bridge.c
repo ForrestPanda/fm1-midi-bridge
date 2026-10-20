@@ -70,11 +70,46 @@ static u8 link_panic_to_usb, link_panic_to_ble;
 
 /* ------------------------------------------------------------------ sinks */
 
+static u32 usb_drops;                   /* packets the host did not take in time (no reader on the port) */
+u32 bridge_usb_drops(void) { return usb_drops; }
+
+/* USB-MIDI carries SysEx 3 bytes per event, and usbmidi_encode() takes pieces of a multiple of 3
+ * except the last. A real-time byte inside a SysEx makes the parser hand over the piece so far
+ * (byte order), of any length: its 1 or 2 bytes over a multiple of 3 wait here for the next
+ * piece, or go out as the end event. Before, they were dropped (F0 7D 01 02 F8 03 04 FA 05 F7 from
+ * TRS reached USB as F0 7D 01 05 F7; the TRS tester, 2026-10-20). */
+static u8 usb_sx[3], usb_sx_n;
+
 static void usb_emit(const midi_msg *m)
 {
-    u8 out[(MIDI_SYSEX_CHUNK / 3 + 1) * 4];
-    u16 n = usbmidi_encode(0, m, out);
-    if (n && usb_midi_configured(0)) usb_midi_write(0, out, n);
+    u8 out[(MIDI_SYSEX_CHUNK / 3 + 2) * 4];
+    u16 n = 0;
+    if (m->kind == MIDI_KIND_SYSEX) {
+        midi_msg rest = *m;
+        u8 i = 0, end = (m->flags & MIDI_SYSEX_END) != 0;
+        if (m->flags & MIDI_SYSEX_START) usb_sx_n = 0;            /* an unfinished one before: gone */
+        if (usb_sx_n) {
+            while (usb_sx_n < 3 && i < m->len) usb_sx[usb_sx_n++] = m->b[i++];
+            if (usb_sx_n < 3 && !end) return;                     /* still short of an event */
+            out[0] = (u8)((usb_sx_n == 3 && !(end && i == m->len)) ? 0x4 : 0x4 + usb_sx_n);
+            out[1] = usb_sx[0];
+            out[2] = usb_sx_n > 1 ? usb_sx[1] : 0;
+            out[3] = usb_sx_n > 2 ? usb_sx[2] : 0;
+            n = 4;
+            usb_sx_n = 0;
+        }
+        rest.len = (u8)(m->len - i);
+        memmove(rest.b, m->b + i, rest.len);
+        if (!end) {
+            usb_sx_n = rest.len % 3;
+            rest.len = (u8)(rest.len - usb_sx_n);
+            memcpy(usb_sx, rest.b + rest.len, usb_sx_n);
+        }
+        if (rest.len) n = (u16)(n + usbmidi_encode(0, &rest, out + n));
+    } else {
+        n = usbmidi_encode(0, m, out);
+    }
+    if (n && usb_midi_configured(0) && usb_midi_write(0, out, n) < n) usb_drops++;
 }
 
 static void sink_usb(void *ctx, const midi_msg *m)
@@ -91,35 +126,92 @@ static void sink_usb(void *ctx, const midi_msg *m)
  * (a 45 ms connection interval, a clock at 24 per quarter) the stack's buffer fills and a
  * send is refused; before (2026-10-19, TRS to BLE with a clock on) the refused packet was
  * dropped, notes and all. Now it is retried every pass, and meanwhile the encoder goes on
- * filling the next packet, so the batching adapts to the link by itself. Only a packet
- * refused for BLE_OUT_MAX_AGE_MS, or one in the way of a full encoder, is dropped (counted). */
+ * filling the next packet, so the batching adapts to the link by itself. A full encoder behind
+ * a waiting packet goes into ble_q, a FIFO of whole packets: with only the waiting one, a USB
+ * burst of 300 messages lost a fifth of them on the first unit (2026-10-20) although the link
+ * carried 12 kB/s. A packet older than BLE_OUT_MAX_AGE_MS when its turn comes, or the oldest
+ * when the queue has no room, is dropped (counted), so the latency stays bounded. */
 #define BLE_OUT_MAX_AGE_MS 250
+#define BLE_QUEUE   4096                /* ~20 packets at a 200-byte MTU, 300 ms at 12 kB/s */
 static u8 ble_out[BLEMIDI_MAX_PACKET];
 static u16 ble_out_len;
 static u32 ble_out_since, ble_drops;
+static u8 ble_q[BLE_QUEUE];             /* records [len u16][since u32][bytes], wrapping */
+static u16 ble_q_head, ble_q_used;
 
 u32 bridge_ble_drops(void) { return ble_drops; }
 
+static void q_put(const u8 *p, u16 n)
+{
+    u16 at = (u16)((ble_q_head + ble_q_used) % BLE_QUEUE);
+    ble_q_used = (u16)(ble_q_used + n);
+    while (n--) { ble_q[at] = *p++; at = (u16)((at + 1) % BLE_QUEUE); }
+}
+
+static void q_get(u8 *p, u16 n)
+{
+    ble_q_used = (u16)(ble_q_used - n);
+    while (n--) { *p++ = ble_q[ble_q_head]; ble_q_head = (u16)((ble_q_head + 1) % BLE_QUEUE); }
+}
+
+/* the oldest queued packet becomes the waiting one */
+static int ble_q_pop(void)
+{
+    u8 hdr[6];
+    if (!ble_q_used) return 0;
+    q_get(hdr, sizeof hdr);
+    memcpy(&ble_out_len, hdr, 2);
+    memcpy(&ble_out_since, hdr + 2, 4);
+    q_get(ble_out, ble_out_len);
+    return 1;
+}
+
+/* the encoder's packet goes behind the waiting one; with no room, the oldest goes */
+static void ble_q_push(void)
+{
+    u8 hdr[6];
+    u16 len;
+    u32 now = timer_get_ms();
+    const u8 *pkt = blemidi_enc_take(&ble_enc, &len);
+    ble_pending = 0;
+    while (ble_q_used + sizeof hdr + len > BLE_QUEUE) {
+        if (!ble_out_len) ble_q_pop();
+        ble_out_len = 0; ble_drops++;
+    }
+    memcpy(hdr, &len, 2);
+    memcpy(hdr + 2, &now, 4);
+    q_put(hdr, sizeof hdr);
+    q_put(pkt, len);
+}
+
 static void ble_flush(void)
 {
-    if (!ble_out_len) {
-        const u8 *pkt;
-        if (blemidi_enc_empty(&ble_enc)) return;
-        pkt = blemidi_enc_take(&ble_enc, &ble_out_len);
-        memcpy(ble_out, pkt, ble_out_len);
-        ble_out_since = timer_get_ms();
-        ble_pending = 0;
+    if (!ble_port_ready()) {                                      /* no link: nothing to wait for */
+        u16 n;
+        if (!blemidi_enc_empty(&ble_enc)) blemidi_enc_take(&ble_enc, &n);
+        ble_out_len = 0; ble_q_used = 0; ble_pending = 0;
+        return;
     }
-    if (!ble_port_ready()) { ble_out_len = 0; return; }           /* no link: nothing to wait for */
-    if (ble_port_send(ble_out, ble_out_len) == 0) ble_out_len = 0;
-    else if (timer_get_ms() - ble_out_since > BLE_OUT_MAX_AGE_MS) { ble_out_len = 0; ble_drops++; }
+    for (;;) {
+        if (!ble_out_len && !ble_q_pop()) {
+            const u8 *pkt;
+            if (blemidi_enc_empty(&ble_enc)) return;
+            pkt = blemidi_enc_take(&ble_enc, &ble_out_len);
+            memcpy(ble_out, pkt, ble_out_len);
+            ble_out_since = timer_get_ms();
+            ble_pending = 0;
+        }
+        if (timer_get_ms() - ble_out_since > BLE_OUT_MAX_AGE_MS) { ble_out_len = 0; ble_drops++; continue; }
+        if (ble_port_send(ble_out, ble_out_len) != 0) return;     /* refused: retried next pass */
+        ble_out_len = 0;
+    }
 }
 
 static void ble_add(uint32_t ts, const midi_msg *m)
 {
     int r = blemidi_enc_add(&ble_enc, ts, m);
     if (r == 1) { ble_pending = 1; return; }
-    if (ble_out_len) { ble_out_len = 0; ble_drops++; }           /* the encoder is full and its predecessor still waits: the oldest goes */
+    if (ble_out_len || ble_q_used) ble_q_push();                  /* the encoder is full and packets still wait */
     ble_flush();
     r = blemidi_enc_add(&ble_enc, ts, m);
     if (r == 1) ble_pending = 1;
@@ -439,9 +531,23 @@ int bridge_step(void)
     link_watch();
     busy |= link_panic_step();
     busy |= panic_step();
-    if (ble_pending || ble_out_len) ble_flush();   /* one notification per burst; a refused one retried */
+    if (ble_pending || ble_out_len || ble_q_used) ble_flush();   /* one notification per burst; refused ones retried */
     fm1_update_poll();                             /* handshake replies; a session blocks here */
     return busy;
+}
+
+/* the TRS UART's interrupt counts in the log, every 2 s while they move */
+static void trs_log_counts(void)
+{
+    static u32 last_ms, last_rx, last_ot, last_con;
+    u32 rx, ot, bytes, breaks, con, now = timer_get_ms();
+    if (now - last_ms < 2000) return;
+    last_ms = now;
+    trs_uart_counts(&rx, &ot, &bytes, &breaks);
+    con = trs_uart_con();
+    if (rx == last_rx && ot == last_ot && con == last_con) return;
+    fm1_log("trs: rx irq %u, timeout irq %u, bytes %u, breaks %u, con %08x", (unsigned)rx, (unsigned)ot, (unsigned)bytes, (unsigned)breaks, (unsigned)con);
+    last_rx = rx; last_ot = ot; last_con = con;
 }
 
 static void bridge_task(void *p)
@@ -453,6 +559,7 @@ static void bridge_task(void *p)
         int busy;
         health_bridge_alive();
         if ((++beats & 0x3FF) == 0) fm1_log_stack_note(FM1_TASK_BRIDGE);
+        trs_log_counts();
         busy = bridge_step();
         if (!busy) os_sem_pend(&wake, 1);          /* or a tick (10 ms), a safety net */
     }
@@ -495,6 +602,8 @@ void bridge_init(void)
     usbmidi_dec_init(&usb_dec, from_usb, NULL);
     blemidi_dec_init(&ble_dec, from_ble, NULL);
     blemidi_enc_init(&ble_enc, 20);
+    ble_out_len = 0; ble_q_head = ble_q_used = 0;
+    usb_sx_n = 0;
     cbuf_init(&usb_cbuf, usb_ring, sizeof usb_ring);
     cbuf_init(&ble_cbuf, ble_ring, sizeof ble_ring);
     cbuf_init(&inj_cbuf, inj_ring, sizeof inj_ring);

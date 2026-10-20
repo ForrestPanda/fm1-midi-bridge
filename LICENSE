@@ -1,0 +1,64 @@
+fm1-midi-bridge: licensing
+
+This tree mixes code under three licences and builds against closed libraries.
+Each source file carries an SPDX-License-Identifier line that is the authority
+for that file; this file is the map.
+
+1. MIT (our code)
+
+   Everything written for this project: app/midi/, app/bridge.c, app/ui/,
+   app/input/, app/settings.c, app/update/, app/fm1_log.c, app/util/,
+   app/bt_ble/ble_host.c, ble_port.c, adv_parse.c, app/minimal.c, tests/,
+   tools/ (except tools/fm1pkg_make.py), web/editor.html and docs/.
+
+   Copyright (c) 2026 David Cerdeira
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in
+   all copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+   THE SOFTWARE.
+
+2. Apache License 2.0 (code derived from the JieLi AC79 AIoT SDK)
+
+   app/app_main.c, app/Makefile, app/board/, app/include/, app/bt_ble/ (the
+   demo_ble-derived files) and app/usb/ (the USB-MIDI device class, written
+   after the SDK's cdc.c and hid.c, and the composite-device file with a MIDI
+   branch) are derived from the SDK's sources
+   (https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK), which JieLi publishes
+   under the Apache License, Version 2.0. You may obtain a copy of the License
+   at http://www.apache.org/licenses/LICENSE-2.0. Changes are noted at the top
+   of each file.
+
+3. GNU GPL version 3 (a build tool, not linked into the firmware)
+
+   tools/fm1pkg_make.py is our fork of Felucca's packager, Copyright (C) 2026
+   Leo Kuroshita (@kurogedelic), Hügelton Instruments, GPL-3.0-only
+   (https://github.com/hugelton/Felucca). It runs on the host at packaging time
+   only. The .fwsc package it produces also contains Felucca's update loader
+   (build/loader/ota.bin, GPL-3), a separate program the FM-1's SPL runs during
+   an install; its source is in the Felucca repository. Nothing under the GPL
+   is compiled or linked into the bridge firmware.
+
+4. Closed libraries (not in this tree, not ours to license)
+
+   The firmware links JieLi's proprietary Bluetooth, USB and kernel libraries
+   shipped as binary .a files in the AC79 SDK, under JieLi's terms for that
+   SDK. They are not included here; a build needs the SDK checkout. A binary
+   package of this firmware therefore carries JieLi's binary code, and whoever
+   redistributes one does so under those terms.
+
+The FM-1 hardware, its stock firmware and the names M-VAVE and FM-1 belong to
+their owners. This project is not affiliated with M-VAVE.

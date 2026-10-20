@@ -41,14 +41,12 @@ static void onoff(char *b, int n, int v) { snprintf(b, n, "%s", v ? "on" : "off"
  * prints a bare "d" (seen in fm1-emu on this very row). The sign is spelt out. */
 static const char *plus(int v) { return v < 0 ? "" : "+"; }
 static const char *to_name(u8 t) { return t == 1 ? "USB" : t == 2 ? "BLE" : "USB+BLE"; }
-/* " bat [##..] 3.87V  ECO" for the footers; 1 when the battery is low */
+/* " bat [##..]  ECO" for the footers; 1 when the battery is low */
 static int battery_line(char *b, int n)
 {
     char bar[8];
-    u16 mv = ui_battery_mv();
     ui_battery_bar(bar, sizeof bar);
-    snprintf(b, n, " bat %s %u.%02uV%s", bar, mv / 1000, (mv % 1000) / 10,
-             settings_get()->ble_link_mode == BLE_LINK_POWER_SAVING ? "  ECO" : "");
+    snprintf(b, n, " bat %s%s", bar, settings_get()->ble_link_mode == BLE_LINK_POWER_SAVING ? "  ECO" : "");
     return ui_battery_low();
 }
 
@@ -252,7 +250,9 @@ static const ui_page page_inputs = { "Inputs", in_enter, in_draw, in_event, NULL
 
 /* ------------------------------------------------------------------ log */
 /* OCT+ raw/decoded, SELECT scrolls back through the 64-line ring, hold OCT+ holds the
- * view (PLAY has a MIDI job by default, so it is not the pause key), OCT- leaves. */
+ * view (PLAY has a MIDI job by default, so it is not the pause key), OCT- leaves.
+ * FX / SCL / ENV / LFO show or hide notes / program changes / control changes / the rest,
+ * their LEDs lit while shown (ui.c); on this page they are that, whatever MIDI job they have. */
 static void log_enter(void) { midilog_invalidate(); }
 static void log_draw(void) { midilog_invalidate(); midilog_draw(); }
 static void log_tick(void)
@@ -267,6 +267,11 @@ static void log_event(const mx_event *e)
     if (e->type != MX_EV_BTN_UP || (e->flags & MX_UP_WAS_HELD)) return;
     if (e->id == MX_BTN_OCT_MINUS) { if (midilog_paused()) midilog_pause(0); ui_back(); }
     if (e->id == MX_BTN_OCT_PLUS) midilog_set_decoded(!midilog_decoded());
+    {
+        u8 bit = e->id == MX_BTN_FX ? MIDILOG_HIDE_NOTES : e->id == MX_BTN_SCL ? MIDILOG_HIDE_PC :
+                 e->id == MX_BTN_ENV ? MIDILOG_HIDE_CC : e->id == MX_BTN_LFO ? MIDILOG_HIDE_OTHER : 0;
+        if (bit) { settings_get()->log_hide ^= bit; mark(); }
+    }
 }
 static const ui_page page_log = { "MIDI log", log_enter, log_draw, log_event, log_tick };
 
@@ -407,7 +412,7 @@ static void perf_paint(void)
     big_seg(5, 2, 8, pn[2], (s32)(perf_lit[2] - now) > 0 ? UI_C_OK : UI_C_DIM);
     big_seg(6, 0, 0, pn[3], (s32)(perf_lit[3] - now) > 0 ? UI_C_OK : UI_C_DIM);
     ui_battery_bar(bar, sizeof bar);
-    snprintf(b, sizeof b, "Bat %s %u.%uV", bar, ui_battery_mv() / 1000, (ui_battery_mv() % 1000) / 100);
+    snprintf(b, sizeof b, "Bat %s", bar);
     big_seg(7, 0, 0, b, ui_battery_low() ? UI_C_WARN : UI_C_DIM);
 }
 static void perf_enter(void) { memset(big_cache, 0, sizeof big_cache); }
@@ -689,7 +694,7 @@ static void v_hostauto(char *b, int n) { onoff(b, n, settings_get()->ble_host_au
 static void a_hostauto(int d) { (void)d; settings_get()->ble_host_auto = !settings_get()->ble_host_auto; mark(); }
 static void v_hostpair(char *b, int n) { onoff(b, n, settings_get()->ble_host_pair); }
 static void a_hostpair(int d) { (void)d; settings_get()->ble_host_pair = !settings_get()->ble_host_pair; mark(); }
-static void act_disconnect(void) { ble_app_disconnect(); ui_toast("disconnecting"); }
+static void act_disconnect(void) { if (ble_host_active()) ble_host_disconnect(); else ble_app_disconnect(); ui_toast("disconnecting"); }
 static void do_forget(void) { ble_app_disconnect(); ble_list_clear_all(); ui_toast("bonds forgotten"); }
 static void act_forget(void) { ui_confirm("Forget all paired devices?", do_forget); }
 static void v_bonds(char *b, int n) { snprintf(b, n, "%u", ble_list_get_count()); }
@@ -827,7 +832,7 @@ static const ui_page page_display = { "Display", disp_enter, disp_draw, disp_eve
 static void v_ident(char *b, int n) { snprintf(b, n, "%s", UPD_IDENTITY); }
 static void v_ver(char *b, int n) { snprintf(b, n, "v%s", FM1_FW_VERSION); }
 static void v_built(char *b, int n) { snprintf(b, n, "%s", __DATE__); }
-static void v_bat(char *b, int n) { snprintf(b, n, "%u mV (pin)", ui_battery_mv()); }
+static void v_bat(char *b, int n) { u32 mv = ui_battery_mv() * 2u; snprintf(b, n, "%u.%02uV raw %u", (unsigned)(mv / 1000), (unsigned)(mv % 1000 / 10), ui_battery_raw()); }
 static int w_bat(void) { return ui_battery_low(); }
 static void v_up(char *b, int n) { u32 s = timer_get_ms() / 1000; snprintf(b, n, "%u:%02u:%02u", (unsigned)(s / 3600), (unsigned)(s / 60 % 60), (unsigned)(s % 60)); }
 static void v_boots(char *b, int n) { snprintf(b, n, "%u", (unsigned)health_get()->boots); }
@@ -1027,11 +1032,17 @@ static void do_load(void) { if (settings_preset_load(preset_slot) == 0) { preset
 static void do_save(void) { if (settings_preset_save(preset_slot) == 0) ui_toast(pre_msg_save[preset_slot]); pre_refresh(); }
 static void do_clear(void) { if (settings_preset_clear(preset_slot) == 0) ui_toast(pre_msg_clear[preset_slot]); pre_refresh(); }
 static int routes_on(uint16_t mask) { int n = 0; mask &= ROUTE_VALID_MASK; while (mask) { n += mask & 1; mask >>= 1; } return n; }
-static void v_pre(char *b, int n, int slot)
+static void v_pre_summary(char *b, int n, int slot)
 {
     if (!peek_ok[slot]) { snprintf(b, n, "empty"); return; }
     snprintf(b, n, "%d/6 rt  ch %d%s%s", routes_on(peek[slot].routes), peek[slot].kbd_channel + 1,
              peek[slot].ble_mode == BLE_MODE_HOST ? "  host" : "", peek[slot].ble_link_mode == BLE_LINK_POWER_SAVING ? "  eco" : "");
+}
+/* the list shows a slot's name (set in the web editor) in place of its summary */
+static void v_pre(char *b, int n, int slot)
+{
+    if (peek_ok[slot] && settings_preset_name(slot)[0]) snprintf(b, n, "%s", settings_preset_name(slot));
+    else v_pre_summary(b, n, slot);
 }
 static const char *const pre_q_load[4] = { "Load preset 1? Settings replaced.", "Load preset 2? Settings replaced.", "Load preset 3? Settings replaced.", "Load preset 4? Settings replaced." };
 static const char *const pre_q_save[4] = { "Save settings to preset 1?", "Save settings to preset 2?", "Save settings to preset 3?", "Save settings to preset 4?" };
@@ -1066,14 +1077,16 @@ static int pslot_used(void) { return peek_ok[preset_slot]; }
 static void pslot_load(void) { ui_confirm(pre_q_load[preset_slot], do_load); }
 static void pslot_save(void) { ui_confirm(pre_q_save[preset_slot], do_save); }
 static void pslot_clear(void) { ui_confirm(pre_q_clear[preset_slot], do_clear); }
-static void v_pslot(char *b, int n) { v_pre(b, n, preset_slot); }
+static void v_pslot(char *b, int n) { v_pre_summary(b, n, preset_slot); }
+static void v_pslot_name(char *b, int n) { const char *s = settings_preset_name(preset_slot); snprintf(b, n, "%s", s[0] ? s : "-"); }
 static const ui_item pslot_items[] = {
+    { "Name",       UI_INFO,   v_pslot_name, NULL, NULL, NULL },
     { "Holds",      UI_INFO,   v_pslot, NULL, NULL, NULL },
     { "Load",       UI_ACTION, NULL, NULL, pslot_load, pslot_used },
     { "Save here",  UI_ACTION, NULL, NULL, pslot_save, NULL },
     { "Clear",      UI_ACTION, NULL, NULL, pslot_clear, pslot_used },
 };
-static ui_menu pslot_menu = { pslot_items, 4, 0, 0, NULL };
+static ui_menu pslot_menu = { pslot_items, 5, 0, 0, NULL };
 static const char *const pslot_titles[4] = { "Preset 1", "Preset 2", "Preset 3", "Preset 4" };
 static void pslot_enter(void) { ui_menu_enter(&pslot_menu); }
 static void pslot_draw(void) { ui_menu_draw(&pslot_menu, pslot_titles[preset_slot]); }

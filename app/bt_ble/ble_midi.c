@@ -701,9 +701,8 @@ static int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_h
 
     u16 handle = att_handle;
 
-#if !TEST_RECEIVE_DATA_RATE
-    log_info("write_callback, handle= 0x%04x,size = %d\n", handle, buffer_size);
-#endif
+    /* no line per write (the demo's log_info): a phone or keyboard writes every few ms, and the
+     * lines pushed everything else out of the device log within a second (2026-10-20) */
 
     switch (handle) {
 
@@ -957,7 +956,11 @@ void ble_profile_init(void)
 #if PASSKEY_ENTER_ENABLE
     ble_sm_setup_init(IO_CAPABILITY_DISPLAY_ONLY, SM_AUTHREQ_BONDING | SM_AUTHREQ_MITM_PROTECTION, 7, TCFG_BLE_SECURITY_EN);
 #else
-    ble_sm_setup_init(IO_CAPABILITY_NO_INPUT_NO_OUTPUT, SM_AUTHREQ_BONDING | SM_AUTHREQ_MITM_PROTECTION, 7, TCFG_BLE_SECURITY_EN);
+    /* No security request at connect, and Just Works bonding without the MITM flag (no display,
+     * no keys: Just Works cannot give MITM). The SDK demo's setting asked every central to pair;
+     * an Android phone whose MIDI app connected but never paired had the pairing failed by our
+     * side after ~12 s and hung up (2026-10-20). A central that wants pairing still gets it. */
+    ble_sm_setup_init(IO_CAPABILITY_NO_INPUT_NO_OUTPUT, SM_AUTHREQ_BONDING, 7, 0);
 #endif
 
     /* setup ATT server */

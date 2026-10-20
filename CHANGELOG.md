@@ -2,6 +2,168 @@
 
 ## Unreleased
 
+- Preset names: up to 12 characters of plain ASCII per slot, set in the web editor's Presets card
+  (or `fm1_editor.py names SLOT "NAME"`), shown on the FM-1's Presets page in place of the summary
+  and on a slot's own page. Their own flash record (id 16), so the settings layout and the presets
+  stay as they were; a save keeps a slot's name, a clear drops it. Editor command 0x0E. Host test;
+  set and read back on the unit from the command line; the web page and the panel verified by the user.
+- Composer on the unit (2026-10-21): every kind sent to USB arrived with the right bytes (note on and
+  its release 300 ms later, CC, program, bend, both aftertouches, clock, start, continue, stop, the
+  device inquiry); a favourite stored a program change and sent it back as stored.
+- Recorder on the unit (2026-10-21): an 8-note phrase with uneven gaps sent into USB, recorded from
+  the page's Record row and played back to USB: all 17 events, every note and velocity, starts
+  within 6 ms of the original and lengths within 10 ms (the 10 ms tick).
+- Battery: PB1 was read without being set up as an analog input or sampled, so the bar was always
+  empty and the voltage 0.00 V. Now set up as the MASTER pot is; the bar uses Felucca's and SLOOP's
+  raw thresholds (the only figures for this board). On USB: raw 619, 2042 mV at the pin, so a 1:2
+  divider and a 4.07 V cell, fully charged: the fourth cell from 611, so a full charge shows four.
+  The screens show only the bar (the user's call), the System page the cell voltage and the raw
+  value. Not checked against a meter.
+- TRS in while the menus scroll: three runs of the TRS suite, 30 of 30, the user scrolling menus,
+  the log and Statistics, no lag. The panel wakes on music keys (the user).
+- Host mode, a stale bond, now seen working (2026-10-20 night, the PC as a pairing keyboard, its
+  bond removed while not connected): the PC answered our stored keys with 06, the FM-1 forgot the
+  bond, reconnected and paired fresh (PAIR_PROCESS 10), subscribed 1.7 s after the refusal. Two
+  bugs on the way, both in the fix of the same day: the bond list keys a device by its address in
+  the other byte order (the delete found nothing; check and delete now try both orders), and the
+  reconnect cleared `peer` before copying the address out of it (it looked for 00:00:00:00:00:00).
+  Also handled now, **not yet seen**: a peer that hangs up (13 or 05) within 2 s at encryption, twice
+  in a row, while we hold a bond, is treated like the 06 (BlueZ did that once, on the build before).
+  BlueZ told to forget a device that is still connected keeps its keys: test with the link down.
+- Host mode, Pair on connect and a keyboard that does not pair: the Casio WU-BT10 adapter never answers a
+  pairing request, and the FM-1 waited for the encryption and dropped the link 15 s later, on every
+  attempt. Now discovery starts anyway after 4 s ("no pairing in 4 s, going on without"); verified
+  with the WU-BT10, notes both ways. Its register cleared, the WU-BT10 worked again in host mode
+  (74 messages keyboard to USB, notes back heard) once the tablet's Casio app, which connects to it
+  on its own, was off.
+- The user's manual checks on the first unit, 2026-10-20 evening, with the PC listening:
+  *Panic* sent 2080 messages to USB and to BLE alike (CC 120 and CC 123 on 16 channels, all
+  2048 note offs); the Statistics page counted a known 10 s pattern exactly (every kind, note
+  and velocity range, 120 bpm, channels 1, 3, 5, 10); menus, the log scrolled back, the hold,
+  the filters and Statistics under 2 minutes of clock and notes: no lag, no glitch; *USB MIDI*
+  off drops the device from the PC within a second, on re-enumerates it; *Forget bonds* went
+  from 2 to 0, the PC's old keys then failed (the link dropped within 10 s, as with any BLE
+  device that forgot a bond) and once the PC forgot too, 300 of 300 each way; the soft key
+  `F0 22 24 35 7D F7` drops this firmware into the ROM (4c4a:8057) within seconds, and switch off,
+  unplug, switch on brings it back with its settings (switching off alone does not: the cable
+  powers the chip); the web editor's Backup card (Export, change, Import, Write) restored the
+  settings, and its Firmware card reinstalled `FM-1_931` ("done: FM-1_931", settings kept,
+  traffic after it 300 of 300).
+- The phone's own view of PC to phone (POCO F3, android-midisuite's BLE pairing app and
+  MidiScope, the FM-1 connected as a system MIDI device): 12 notes with their velocities, 13
+  CC 74 values, a program change and two pitch bends sent into USB arrived in order, every value
+  right (MidiScope shows a bend as its two data bytes: 0 96, then 0 64).
+- Web editor: Connect took the first port whose name held "midi", so "Midi Through" on Linux,
+  and the Firmware card re-found the device the same way. Now a port list next to Connect,
+  the FM-1 (or its loader) first and Midi Through or a tester never by default; choosing
+  another port reconnects. Verified in Chrome on the bench.
+- Pairing asked for by the central, after the change below (no security request, Just Works
+  without MITM), on the first unit 2026-10-20: the PC (`bluetoothctl pair`, a NoInputNoOutput
+  agent) paired, the FM-1 stored the bond (PAIR_PROCESS 10); every reconnect encrypted with the
+  stored keys (LL_ENC_REQ, PAIR_PROCESS 01, encryption change 0), no pairing again; 300 of 300
+  each way over the encrypted link. An unpaired phone app stays connected as before.
+- Verified by the user: encoder direction and acceleration, the holds, the backlight timeout and
+  wake-up press, the Perform page's font. The USB-silent episodes of 2026-10-19 did not come back
+  in a whole day of testing: closed.
+- MIDI log filters: on the MIDI log page FX, SCL, ENV and LFO show or hide notes, program
+  changes, control changes and everything else, each button lit while its kind is listed;
+  the status line shows "show N P C O" with a "-" per hidden kind. Only the listing changes,
+  not what the bridge forwards. Kept in the settings (`log_hide`, a former pad byte at 208:
+  no new version); `fm1_editor.py set log_hide=N`, the web editor knows the offset. On that
+  page the four buttons are filters even when they have a MIDI job. Verified on the unit.
+- Peripheral mode no longer asks every central to pair (the SDK demo's security request, with
+  MITM asked of a device with no display and no keys). An Android phone (POCO F3) whose MIDI app
+  connected and subscribed but never paired had the pairing failed by our side after ~12 s and
+  hung up, on every connection (2026-10-20). Now Just Works bonding when the central asks for
+  it, nothing otherwise: the phone stays connected; PC to phone 3624 messages with no drop
+  (scale, a burst of 600, 30 s at 100 messages/s), phone to PC 317 messages, every one. The
+  phone set the link to 11.25 or 37.5 ms after our 7.5 ms request.
+- Host mode on today's firmware with the PC as the keyboard: keyboard to USB every note; USB to
+  the keyboard 1002 of 1002 at 100 messages/s and a burst of 600 whole in 29 packets (the BLE
+  queue in host mode). Pair on connect: paired and encrypted.
+- Host mode, a stale bond: the FM-1 asked for encryption with keys the PC no longer had (status
+  06), the discovery started at connect never finished, and the link was dropped after 15 s,
+  every attempt. Now that peer's bond is deleted and the FM-1 connects to it again
+  (`unbond_retry`). **Verify on hardware:** the PC re-keyed on its own when it was told to forget
+  the FM-1, so the 06 path itself has not run since; a keyboard reset to factory would show it.
+- `tools/ble_midi_peripheral.py`: a PropertiesChanged without the invalidated list no longer
+  throws in the handler.
+- TRS MIDI IN tested on the first unit (2026-10-20) with `tools/trs_tester/`, an STM32F4-Discovery
+  that plays byte scripts on the TRS line with microsecond timing, and `tools/trs_test.py`, which
+  works out what the FM-1 should forward (a port of its parser and merge guard) and checks USB
+  (the raw ALSA device) and BLE (the PC as the central). All ten tests pass on both: notes,
+  clock at 120 and 300 bpm under notes (the open TRS to BLE with a clock item: no loss, BLE
+  latency median 5.8 ms), the line saturated for 3 s, running status, real time inside messages
+  and SysEx, 1 KB and 4 KB SysEx, garbage (orphan data, undefined statuses, cut-off messages),
+  the baud rate off by up to 4 %, and line breaks. TRS to USB latency from the last byte on the
+  line: median 0.8 ms. Three fixes on the way:
+  - `app/trs_uart.c`: every byte was handed over one byte late, so a message's last byte waited
+    for the next message (forever for the last one: a held note-off). The ISR read HRXCNT in the
+    same instant it set the latch, and got the previous latch's count. Now JieLi's sequence:
+    latch, clear the timeout pending, clear the RX pending, a few nops, read.
+  - A line break (a cable going in or out under running status) arrived as a 00 data byte and
+    completed a note (90 00 28): this UART flags no framing error. The timeout interrupt, 1 ms
+    after the last byte, now drops a trailing 00 when the line (PH8) is still low; a break under
+    1 ms still gets through. Counts in the log (`trs: rx irq, timeout irq, bytes, breaks`).
+  - USB out: a real-time byte inside a SysEx makes the parser hand over the piece so far, and
+    `usbmidi_encode()` dropped the 1 or 2 bytes over a multiple of 3 (F0 7D 01 02 F8 03 04 FA 05
+    F7 reached USB as F0 7D 01 05 F7). They wait for the next piece now (`usb_emit`). Host test
+    `test_usb_sysex_realtime`.
+- `ble_midi.c` printed a log line for every BLE write (the SDK demo's), which flushed the device
+  log within a second under a phone or keyboard: gone.
+- `tools/usb_to_ble.py --clock BPM` (a MIDI clock under the notes; spacing on arrival and in the
+  FM-1's timestamps) and `--reverse` (BLE to USB). On the unit: USB to BLE with a clock at 120,
+  200 and 300 bpm under notes, no loss, latency median 5-7 ms; BLE to USB steady, bursts of 300
+  and a 200 bpm clock, no loss. Settings, routes and presets survive a reboot; a reinstall of the
+  same image went through (the loader drop of 2026-10-19 not seen again).
+- Soak, 2026-10-20: 55 minutes, about 270 BLE connections both ways with a clock and bursts: the
+  FM-1's heap, stack margins and hang counters did not move. After ~45 minutes the PC's AX200 /
+  BlueZ slowed the FM-1 to PC direction to under 1 kB/s on every connection (and aborted a
+  connect now and then) until the adapter was powered off and on: on the PC, not the FM-1.
+- USB to BLE verified on the first unit (2026-10-20, `tools/usb_to_ble.py`: the PC as the BLE
+  central over BlueZ, notes and CCs into the USB port, every message checked): steady rates up
+  to 600 messages/s arrive whole and in order, latency median 7 ms. Bursts did not: 300
+  messages at once lost a fifth, 600 lost two thirds, while the link carried 197-byte packets
+  at 12 kB/s. The bridge held one refused packet and the encoder's, and dropped the older when
+  the encoder filled. Now a 4 KB FIFO of packets waits behind the refused one (`ble_q`,
+  `app/bridge.c`); a packet older than 250 ms when its turn comes, or the oldest when the queue
+  is full, is dropped and counted, so latency stays bounded. On the unit: 300 and 600 at once
+  arrive whole (latency max 77 and 192 ms); 1200 at once lose 2%, on the USB side. Host test
+  `test_ble_burst`; the bridge fuzzer now turns a busy stack on and off.
+- The WU-BT10 keyboard in host mode sounds the notes the FM-1 sends (2026-10-20).
+- BLE host mode verified on the first unit (2026-10-19) against a BLE MIDI peripheral made of
+  the PC's Bluetooth adapter (`tools/ble_midi_peripheral.py`, BlueZ over D-Bus: advertises
+  the MIDI service, plays a note every so often once subscribed, prints what the central
+  writes, answers pairing requests): scan, connect, discovery, subscription, notes both ways,
+  reconnect after a drop, pairing on connect, host mode off and on at runtime; then a real
+  keyboard through a Casio WU-BT10 adapter (no name, no GAP name: the list shows its address;
+  notes with velocities to USB, notes from the FM-1 out to it). Fixed on the
+  way: the stack reports 128-bit UUIDs big-endian (the characteristic never matched); a
+  reconnect was a blind create connection and never completed (now the scan looks for the
+  remembered address and connects on sight, the SDK's way; a stuck attempt is cancelled after
+  10 s); `ble_op_conn_param_request` is the slave's L2CAP request and reset the chip when the
+  central used it (`ble_op_conn_param_update` now); the peripheral's parameter request is
+  refused unless it asks for 15 ms or less or the link profile is power saving; entering and
+  leaving host mode wait for the old link's disconnect event and rest 200 ms before the role
+  changes; with "Pair on connect" discovery waits for the encryption; a device whose MIDI
+  UUID is only in its scan response is listed too; the remembered peer's name is read from
+  its GAP name when the scan gave none; a boot that never ran clean does not enter a stored
+  host mode (`health.unclean`); the panel's Disconnect acts on the host link in host mode.
+- A USB bulk write blocked the bridge loop for good when no program on the PC read the MIDI
+  port (Linux polls bulk IN only with a reader open): two stall resets on a link-drop panic
+  burst. `usb_midi_write` checks the IN FIFO first, waits up to 50 ms (yielding) for a host
+  that is reading, and once a packet has been left behind drops at once until the FIFO is
+  found empty (`bridge_usb_drops`, in the Status page's dropped figure). A 3 ms bound lost
+  editor replies on the first unit.
+- A settings write from the editor (0x03) applied the panel's invert and the keyboard reload
+  from the bridge task; the UI task does it now at its next tick (`ui_settings_changed`).
+  `usb_port_apply` only starts or stops USB on a change.
+- The SDK log hook: the vendor library does print through `log_putbyte()` (the first unit:
+  LL, SM, VM, USB and a task and heap table every minute). That table is filtered out of the
+  device log (`app/fm1_log.c`), it would have pushed everything else out within three minutes.
+- Editor command 0x0D (host): the host mode's scan list and the Scan page's buttons (connect
+  by index, disconnect, scan on/off) over SysEx; `fm1_editor.py host`, `set FIELD=VALUE`
+  (writes a setting: `set ble_mode=1` is host mode), `send PORT HEX ...`, `settings`.
 - BLE out: a packet the stack refuses (buffer full) waits and is retried every pass while the
   next one fills behind it, so batching adapts to the link; only a packet refused for 250 ms
   is dropped, counted in the Status page's dropped figure (`bridge_ble_drops`). Before, the

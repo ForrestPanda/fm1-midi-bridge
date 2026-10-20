@@ -9,8 +9,10 @@ Three doors, tried in order unless one is chosen:
               and permission on the USB device: run as root or add a udev rule for 3654:*)
   --wait      only wait for the UBOOT disk to appear and print its /dev/sg path
 Exit codes: 0 UBOOT device seen, 1 nothing worked, 2 missing module.
-Nothing here is verified on hardware yet (October 2026); it follows Felucca's installer
-and the SDK's user_setup.c. A firmware that never enumerates needs the D+/D- dongle.
+--softkey is verified on stock V15 (2026-10-19) and on this bridge (2026-10-20): the ROM shows
+within seconds; back out: switch off, unplug, plug in, switch on. --vendor is not verified on
+hardware yet; it follows the SDK's user_setup.c. A firmware that never enumerates needs the
+D+/D- dongle.
 """
 import argparse
 import glob

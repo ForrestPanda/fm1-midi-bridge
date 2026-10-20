@@ -19,6 +19,12 @@ __attribute__((weak)) void editor_port_matrix(uint32_t *ticks, uint32_t *pa, uin
     *ticks = *pa = *pb = 0;
 }
 __attribute__((weak)) void editor_port_matrix_force(uint32_t word, uint32_t ticks) { (void)word; (void)ticks; }
+__attribute__((weak)) uint32_t editor_port_host(uint8_t op, uint8_t arg, uint8_t *out, uint32_t max)
+{
+    (void)op; (void)arg; (void)max;
+    out[0] = out[1] = 0;
+    return 2;
+}
 
 int editor_is_frame(const uint8_t *wire, uint32_t n)
 {
@@ -86,6 +92,19 @@ int editor_handle(const uint8_t *wire, uint32_t n)
         reply(0x45, used, sizeof used, 0);
         return 1;
     }
+    case 0x0E: {
+        uint8_t out[1 + FM1_PRESET_COUNT * FM1_PRESET_NAME_LEN];
+        int i, len = (int)n - EDITOR_PREFIX_LEN - 2;
+        out[0] = 0;
+        if (len >= 1) {
+            int slot = wire[EDITOR_PREFIX_LEN + 1];
+            if (slot >= FM1_PRESET_COUNT) out[0] = 1;
+            else if (settings_preset_set_name(slot, (const char *)wire + EDITOR_PREFIX_LEN + 2, len - 1)) out[0] = 2;
+        }
+        for (i = 0; i < FM1_PRESET_COUNT; i++) memcpy(out + 1 + i * FM1_PRESET_NAME_LEN, settings_preset_name(i), FM1_PRESET_NAME_LEN);
+        reply(0x4E, out, sizeof out, 0);
+        return 1;
+    }
     case 0x06: case 0x07: case 0x08: {
         uint8_t status = 1;
         int slot = n >= EDITOR_PREFIX_LEN + 3 ? wire[EDITOR_PREFIX_LEN + 1] : -1;
@@ -134,6 +153,13 @@ int editor_handle(const uint8_t *wire, uint32_t n)
         out[4] = (uint8_t)pa; out[5] = (uint8_t)(pa >> 8); out[6] = (uint8_t)(pa >> 16); out[7] = (uint8_t)(pa >> 24);
         out[8] = (uint8_t)pb; out[9] = (uint8_t)(pb >> 8); out[10] = (uint8_t)(pb >> 16); out[11] = (uint8_t)(pb >> 24);
         reply(0x4C, out, sizeof out, 1);
+        return 1;
+    }
+    case 0x0D: {
+        uint8_t out[2 + 8 * 28], op = 0, arg = 0;
+        if (n >= EDITOR_PREFIX_LEN + 3) op = wire[EDITOR_PREFIX_LEN + 1];
+        if (n >= EDITOR_PREFIX_LEN + 4) arg = wire[EDITOR_PREFIX_LEN + 2];
+        reply(0x4D, out, editor_port_host(op, arg, out, sizeof out), 1);
         return 1;
     }
     case 0x0B: {

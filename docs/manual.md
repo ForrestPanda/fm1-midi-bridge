@@ -64,9 +64,10 @@ crash counter above zero, dropped input events) is orange. An action that has no
 visible effect of its own ("stored", "sent", "settings reset") says so on the bottom
 line for a second.
 
-The main menu's bottom line shows the battery as a bar and a voltage, and "ECO" when
-power saving is on. The bar's steps are guesses until a unit has been measured: four
-cells above 4.0 V, one cell down to 3.5 V, orange below that.
+The main menu's bottom line shows the battery as a bar of four cells, and "ECO" when
+power saving is on. The steps are the ones Felucca and SLOOP use on the same reading:
+four cells from about 3.95 V (a full charge), three from 3.8, two from 3.6, one from 3.4 V,
+orange below that (estimates, not checked against a meter).
 
 A question that cannot be undone (reset the settings, forget the pairings, reboot
 into recovery) starts with the highlight on "no": turn SELECT up to "yes" and press
@@ -136,6 +137,15 @@ shows "^N", how many lines you are behind the newest, and the view stays where i
 is while new messages keep arriving underneath; turn back down to the newest line
 and it follows again. Hold OCT+ to freeze the view ("PAUSED" on the status line),
 hold it again to release. OCT- leaves.
+
+Four buttons choose what the page lists: FX notes, SCL program changes, ENV control
+changes, LFO everything else (clock, SysEx, pitch bend, aftertouch, system messages).
+A button's LED is lit while its kind is listed; press it to hide that kind, again to
+show it. With something hidden, the status line shows "show N P C O" in place of the
+routes, a "-" for each kind hidden (hiding LFO is the way to read notes under a running
+clock). Hidden messages still pass through the bridge, they are only not listed, and a
+kind shown again appears from then on. The choice is kept across restarts. On this page
+the four buttons do this even when they have a MIDI job on the Buttons page.
 
 ![MIDI log held](ui-examples/30-midi-log-paused.png)
 
@@ -232,10 +242,16 @@ key, to pick it. A key with a job no longer plays its note.
 - *Disconnect*, *Forget bonds* (the number shows how many devices are paired).
 - *Host mode*: the FM-1 becomes the host and connects to a Bluetooth MIDI keyboard.
   While it is on, phones cannot connect. *Scan devices* lists MIDI devices in range
-  with their signal; OCT+ connects to the highlighted one. *Pair on connect* asks the
-  keyboard to pair, which some require before they send anything. *Auto reconnect*
-  remembers the last keyboard and connects to it again at power-on and after a
-  drop; Disconnect switches that off until you connect by hand again.
+  with their signal (a device shows its address until its name has been heard); OCT+
+  connects to the highlighted one. *Pair on connect* asks the keyboard to pair, which
+  some require before they send anything; one that does not answer (Casio's WU-BT10 adapter) is used
+  unpaired after 4 s. A keyboard reset or told to forget the FM-1 is forgotten in turn and paired
+  again on the next connection. *Auto reconnect* remembers the last keyboard
+  and looks for it again at power-on and after a drop, also while the Scan page is open;
+  Disconnect switches that off until you connect by hand again. A keyboard that asks for
+  a slow link gets it only in the power-saving link profile. If a boot never ran clean
+  (twenty seconds up), the next one starts in the normal mode and the log says so: turn
+  host mode on again by hand.
 
 ### USB
 
@@ -278,7 +294,7 @@ dark, so the first pedal press after a pause is never lost. Invert colours.
 
 ![Input test page](ui-examples/13-input-test.png)
 
-Firmware identity, version and build date, battery voltage at the pin (not calibrated),
+Firmware identity, version and build date, the battery (the cell voltage, estimated as twice the pin's, and the raw reading),
 uptime, counters per port, input event drops, the boot count, why the chip last
 reset (power on, software, watchdog, ...) and how many watchdog resets and bridge
 stalls it has seen. If "Crashes" ever climbs, that is the first thing to report; the

@@ -14,7 +14,7 @@
 #     --dump-only  stop after 5: a backup, nothing installed (PACKAGE may be omitted)
 #     --port NAME  the MIDI port, when the default match is not enough (passed to the tools)
 #     --force      a package without the Felucca loader marker (stock V15: going back)
-# Env: FM1_INSTALL  the fm1_install.py to use (default: fm1-drummer's copy, else Felucca's)
+# Env: FM1_INSTALL  the fm1_install.py to use (default: fm1-backbeat's copy, else Felucca's)
 #      FM1_DUMPS    where dumps go (default: my_fw/fm1-dumps; never commit them, keep a second copy elsewhere)
 #      JLUBOOT      the jl-uboot-tool checkout (default and setup: the header of fm1_flash.sh)
 # Needs: python3 with mido and python-rtmidi; jl-uboot-tool with its requirements; root for the ROM disk
@@ -22,7 +22,7 @@
 set -e
 here=$(cd "$(dirname "$0")/.." && pwd)
 top=$(cd "$here/.." && pwd)                       # my_fw
-INSTALL=${FM1_INSTALL:-$top/fm1-drummer/tools/fm1_install.py}
+INSTALL=${FM1_INSTALL:-$top/fm1-backbeat/tools/fm1_install.py}
 [ -f "$INSTALL" ] || INSTALL=$top/../Felucca/tools/fm1_install.py
 DUMPS=${FM1_DUMPS:-$top/fm1-dumps}
 

@@ -8,7 +8,7 @@
 static int fails;
 #define CHECK(c) do { if (!(c)) { printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); fails++; } } while (0)
 
-static uint8_t store[16][256]; static int store_len[16]; static int writes; static uint32_t now;
+static uint8_t store[32][256]; static int store_len[32]; static int writes; static uint32_t now;
 #define blob store[FM1_SETTINGS_ID]
 #define blob_len store_len[FM1_SETTINGS_ID]
 int settings_port_read(uint16_t id, void *buf, uint16_t len) { if (store_len[id] <= 0) return -1; if (len > store_len[id]) len = (uint16_t)store_len[id]; memcpy(buf, store[id], len); return len; }

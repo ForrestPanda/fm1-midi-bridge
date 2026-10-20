@@ -170,6 +170,18 @@ over one cable, with Chrome's web installer tab still holding the FM-1's ALSA po
   through the minimal build with the panel guard in place, never straight over the full build;
   never DMA from a flash address; and keep the dongle wired up on the bench.
 
+### Host mode on the first unit, 2026-10-19, evening
+
+Seven installs of the full bridge in a row through its own update entry (`fm1_safe_install.sh
+--no-dump`, about two minutes each), none lost: the loader drop-off seen on the reinstall of
+BackBeat did not recur. Host mode tested against `tools/ble_midi_peripheral.py` on the PC;
+the record of what worked and what was wrong is in `CHANGELOG.md` and `docs/plan.md`. Two
+findings that matter for recovery: a USB bulk write with no reader on the PC blocked the
+bridge loop (the stall monitor restarted the unit, `hangs` 2; fixed, the write is bounded),
+and a stored host mode is not entered after a boot that never ran clean, so a host-mode
+crash loop cannot keep the unit from its updater. The unit kept answering the editor between
+every experiment; nothing needed the dongle.
+
 ## The ladder, cheapest first
 
 ### 1. The firmware runs and enumerates
@@ -184,7 +196,9 @@ resetting:
 
 - the System page, *USB recovery mode*;
 - the SysEx soft key, which stock, Felucca and this bridge all honour:
-  `F0 22 24 35 7D F7`  (`tools/fm1_recover.py --softkey`); **verified on stock V15**;
+  `F0 22 24 35 7D F7`  (`tools/fm1_recover.py --softkey`); **verified on stock V15 and on this
+  bridge** (`FM-1_931`, 2026-10-20). Back out of the ROM: switch off, unplug, wait 5 s, plug in,
+  switch on; with the cable in, the switch alone leaves the chip powered and in the ROM;
 - the SDK's vendor control request on endpoint 0, `GET_STATUS` with wValue 0xFC and
   wIndex 0xFE, answered by any firmware built on the SDK USB stack even when the MIDI
   side is broken (`tools/fm1_recover.py --vendor`, needs pyusb and USB permission).

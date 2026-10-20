@@ -66,7 +66,7 @@
   Felucca's loader only writes the app area, so the SPL in the package is inert.
   Keep it that way.
 
-## Built so far (all host-tested where possible, nothing run on hardware)
+## Built so far (host-tested where possible; on the first FM-1 since 2026-10-19)
 
 - `app/bt_ble/ble_midi.c`: the SDK GATT server glue serving the BLE MIDI service
   (`midi_profile.h`), advertising the 128-bit service UUID, name "FM-1 MIDI",
@@ -215,25 +215,35 @@
     as we know, so no precision forms are used (padding by hand).
 
 ### Verify on hardware (UI)
+- **Verified 2026-10-20 (the user):** encoder direction and acceleration, the 700 ms holds,
+  the backlight timeout and the wake-up press, the Perform page's big font at a metre.
 - Splash then the Status page; HOME opens the menu; SELECT scrolls, clockwise =
   down (if it is up, the encoder sign in `matrix.c` `qtab` is the other way round on
   real parts); OCT+/OCT- navigate; HOME returns to the Status page from any page.
-- Battery bar thresholds (`BAT_*_MV` in `ui.c`) against a meter on the cell: the
-  divider ratio is unknown; the orange "low" must come before the SDK's own cut-off.
+- Battery: until 2026-10-20 PB1 was never set up as an ADC input and read 0.00 V. Now Felucca's
+  and SLOOP's raw thresholds (531 / 561 / 591, ours 611 for the fourth cell, `BAT_*_RAW` in
+  `ui.c`); fully charged on USB the unit read raw 619, 2042 mV at the pin, so a 1:2 divider and a
+  4.07 V cell.
+  No meter here: the cell voltage and where orange "low" falls against the SDK's own cut-off
+  stay unchecked (dropped for now, 2026-10-20, the user's call).
 - Encoder acceleration feel: a deliberate turn should step by 1, a quick one by 3, a
   flick by 10 (the gaps are measured by the UI task, `accelerate()`); retune the 40 and
   100 ms thresholds if real detents land differently.
 - Hold timing: 700 ms (`MX_HOLD_FRAMES`) for hold OCT+, hold HOME, hold GLO, hold
   OCT-/+ on the Keyboard page; the release after a hold does nothing.
 - With the backlight off, a note key, a mapped button and a knob on the Keyboard page
-  send their MIDI and light the panel; a menu button only lights the panel.
+  send their MIDI and light the panel; a menu button only lights the panel. **Verified
+  2026-10-20 (the user).**
 - The Perform page's big font on the real panel: legibility at a metre, the 16 px
   strip under the eighth row holds the footer.
 - The 10 kHz TIMER3 ISR does not disturb TRS MIDI, USB or BLE (log page still shows a
   TRS keyboard while scrolling menus). If TIMER3 is taken, use TIMER2 (`matrix_port.c`).
-- TRS MIDI IN through `app/trs_uart.c` (register level, Felucca's set-up): a keyboard on
-  the jack logs on the MIDI log page and reaches USB/BLE within a few ms with the FM-1's
-  own keys idle; with nothing on the jack, no UART interrupts (Statistics page).
+  **Verified 2026-10-20:** three runs of the TRS suite (`tools/trs_test.py`, 30 of 30) while the
+  user scrolled the menus, the log and Statistics: no loss, no lag; menus under USB traffic the same.
+- TRS MIDI IN through `app/trs_uart.c` (register level, Felucca's set-up): **verified
+  2026-10-20** with `tools/trs_tester/` (`tools/trs_test.py`, ten tests, USB and BLE): TRS to USB
+  median 0.8 ms from the last byte on the line, to BLE 5-9 ms; with nothing on the jack, no UART
+  interrupts (the log's `trs:` line stays still). Still to look at: the Statistics page itself.
 - The FM-1's own keys reach USB/BLE with nothing plugged into TRS (the bridge loop used
   to wait for TRS bytes; it now sleeps on a semaphore every producer posts).
 - Matrix tables (`app/input/matrix.c`): System > Input test shows every closed cell as
@@ -244,16 +254,33 @@
 - Panic silences a stuck note on USB and BLE.
 - USB page follows plug/unplug; "USB MIDI off" stops enumeration.
 - Forget bonds forces a phone to re-pair.
-- Host mode: a BLE MIDI keyboard appears in Scan, connects, its notes show as
-  "BLE 90 .." and reach USB; host mode off makes the FM-1 advertise again. Risks: the
-  server->client role switch at runtime, the `user_client_report_*` hook names, the
-  `adv_report_t` packet offset, keyboards that insist on pairing ("Pair on connect").
+- Host mode: **verified 2026-10-19** against a BLE MIDI peripheral made of the PC's Bluetooth
+  adapter (`tools/ble_midi_peripheral.py`, BlueZ): the scan lists it, it connects (7.5 ms,
+  MTU 200), discovery finds the MIDI characteristic, the subscription brings its notes to USB,
+  a note sent from the FM-1 reaches it, a dropped link reconnects by itself, "Pair on connect"
+  pairs (just works, encrypted before discovery), host mode off makes the FM-1 advertise again
+  and on again at runtime reconnects. The role switch at runtime, the hook names and the
+  `adv_report_t` offset were right. What was wrong (fixed): the stack reports 128-bit UUIDs
+  big-endian, as written (the little-endian form matched nothing); a create connection with no
+  scan before it never completed (the SDK's demo connects from an advertisement, so does the
+  reconnect now); `ble_op_conn_param_request` is the slave's L2CAP request and reset the chip
+  when the central used it on a settings write (`ble_op_conn_param_update` is the central's);
+  a settings write from the editor drove the panel from the bridge task (the UI task applies
+  it now); and a USB bulk write with no reader on the PC blocked the bridge loop for good (a
+  link-drop panic burst, two stall resets): the IN FIFO is checked first. Then a real one, the
+  same evening: a keyboard through a Casio WU-BT10 adapter (BLE address 6C:47:60:xx:xx:xx, random,
+  one above its classic address) in pairing mode. It advertises the MIDI UUID
+  alone, no name anywhere, no GAP name characteristic (its GATT: the MIDI service and two
+  "CHAR" vendor characteristics), so the Scan page shows its address; connect, subscribe at
+  handle 3, no pairing asked, no parameter request from it, its notes reach USB with their
+  velocities, and notes sent from the FM-1 go out to it. An earlier attempt at -83 dBm dropped
+  with 0x3E during discovery. Heard 2026-10-20: the keyboard sounds what the FM-1 sends.
 - PC8 reclaimed as D/C after the SPI driver opened port C; panel init at 12 MHz.
-- The SDK log hook: does the vendor library call `log_putbyte()` per byte, so SDK
-  printf output lands in the device log? Our own `fm1_log()` lines do regardless.
+- The SDK log hook: yes, the vendor libraries' output lands in the device log through
+  `log_putbyte()` (`[Info]: [VM]...`, `[LL_E]...`, `PAIR_PROCESS` lines, seen 2026-10-20).
 - Stack margins in the Device card after an hour of traffic (bridge and UI tasks).
 - USB strings: does M-UPGRADE still find the device as "FM-1"? Stock VID/PID.
-- `tools/fm1_recover.py`: the soft key on stock and on ours, the vendor request on
+- `tools/fm1_recover.py`: the soft key on stock and on ours (both verified), the vendor request on
   ours; the UBOOT disk's SCSI vendor/model strings; jl-uboot-tool on WL82 (listed
   as untested there) and the loader it needs.
 
@@ -286,16 +313,109 @@ never the head. Stock v15 is the recovery path, not a prerequisite.
    check that the SDK SPI driver left PC8 usable as the D/C output (we reclaim it
    after `dev_open("spi1")`), and the 12 MHz clock.
 
+## Before sharing (future work, 2026-10-20)
+
+Asked whether the bridge is ready for a post on the FM-1 subreddit: not as a "install this"
+post, maybe as an alpha call for testers once these are done. The tree is committed and
+licensed (`LICENSE`); the rest:
+
+- **Publish.** No git remote yet: push to a public repository, attach a release `.fwsc`
+  with its hash and a three-line install, since a build needs the full SDK checkout, the
+  JieLi toolchain and a Felucca tree built next door.
+- **M-UPGRADE back to stock, verify on hardware.** `docs/manual.md` says M-VAVE's own updater
+  puts stock back at any time; only Felucca's installer has done so on the unit. The bridge
+  keeps JieLi's USB ids (3654:4155, stock is 4c4a:c755) and M-UPGRADE may look for stock's
+  (the VID/PID item below). Test it, or copy the ids, or change the sentence.
+- **More days on the unit** with a phone, a BLE keyboard, and a TRS sender with its clock on
+  (the retry below is untested); read the boot log after the next USB-silent episode.
+- **README status line**: brought up to date 2026-10-21 (what is verified on the unit, what is not).
+- **The post itself**: alpha, one unit, one day of hardware time, a soft-lock needed the mask
+  ROM dongle once; bring a dongle and read `docs/recovery.md` first. The key matrix tables may
+  differ by batch.
+
+## MIDI log filters (asked 2026-10-20, built the same day)
+
+Built as below (`settings.log_hide`, the byte that was `pad2[0]`, so no format change);
+verified on the unit the same day: the buttons, their LEDs, the status line. Four show/hide selectors on the MIDI log page: notes, program changes, control changes, and
+everything else (clock, SysEx, pitch bend, aftertouch, system). Asked for on KNOB1..KNOB4;
+proposed instead: the FX, SCL, ENV and LFO buttons, one toggle each, the button's LED lit while
+that kind is shown. A press is a clear on/off (a knob turn is relative, easy to bump, and shows
+nothing), the four sit in a row, the log page does not use them yet, and KNOB1 stays the menu's
+value knob everywhere. The filter applies to what the page lists (`midilog_add`), not to what
+the bridge forwards; the state survives leaving the page (a field in the settings, so a
+reboot keeps it too); the title line shows the active filter (e.g. "N P C -").
+
+## Future work: a phone and a keyboard at once (2026-10-20)
+
+Today BLE is one role at a time: the peripheral ("FM-1 MIDI", a phone connects) or host mode
+(the FM-1 connects to a BLE keyboard), and entering host mode drops the phone. Both at once is
+possible on the chip and the SDK, not in our build:
+
+- The controller is built with every LE role (`lib_btctrler_config.c`: ADV, SCAN, INIT, SLAVE,
+  MASTER), `ble_stack_gatt_role(2)` runs server and client together (host mode uses 1), and
+  the SDK's `apps/common/ble/multi_demo/` (in our Makefile, off: `TRANS_MULTI_BLE_EN 0` in
+  `app/include/app_config.h`) holds 2 peripheral and 2 central links with the per-connection
+  `ble_op_multi_att_*` calls instead of `ble_op_att_*`.
+- The work: `TRANS_MULTI_BLE_EN` with 1 slave, 1 master (controller slots and ACL buffers per
+  link); `ble_midi.c` and `ble_host.c` share the stack and sort events by connection handle the
+  multi demo's way, instead of taking it over in turn (the role switch in `ble_host.c` mostly
+  goes); BLE becomes two ports in the router (`MIDI_PORT_COUNT`, keyboard to phone becomes a
+  route), so the settings version, the editor protocol, the Routing page and the web editor
+  follow; the Status page shows both links, the Scan page works with a phone connected.
+- Costs: the two links share the radio (the 2026-10-20 burst figures in the changelog roughly halve, a few ms more
+  latency with both busy; reconnecting the keyboard scans with the phone link up), a few KB of
+  RAM (375 KB heap free). The risk is JieLi's closed library in a mode we have not run (it
+  gave us the UUID byte order and the parameter-request reset).
+- First step, before the routing: both links up on the unit (a phone on the peripheral, the
+  PC's `tools/ble_midi_peripheral.py` as the keyboard), traffic on each, `tools/usb_to_ble.py`
+  for the peripheral side's figures.
+
 ## Still open
 
-- TRS to BLE with a MIDI clock on the sending device (2026-10-19: it worked with the clock
-  off; the refused-packet retry went in untested on hardware). Candidates if it still
-  suffers: clock-only packets held to the connection interval, the route's clock option off
-  by default, or the clock master instead of a forwarded clock. The route option exists
-  today: Routing > TRS to BLE > options > clock.
+Done by hand 2026-10-20 evening (the changelog): Panic, Statistics, menus under traffic, USB
+MIDI off, Forget bonds, the soft key on our firmware, the web editor's Backup and Firmware cards,
+the phone app's view of the PC to phone stream (MidiScope: MIDI Commander's log does not list
+BLE ports).
+The stale-bond fix: seen working with the PC (the changelog); the WU-BT10 cannot test it, it never
+pairs. A peer that hangs up at encryption instead of answering 06: handled, not yet seen.
+Also done: the Composer and the Recorder (2026-10-21; the Recorder's first try recorded nothing,
+started with the REC button, most likely a MIDI job on this unit's Buttons page: the page's Record
+and Play rows worked). Also done: preset names (the web page and the panel, the user); the panel woken by music keys, TRS in while the menus scroll; the battery now reads (it
+read 0 V), its thresholds Felucca's, no meter to check them. Left for later (the user's call): iOS; M-UPGRADE; key-matrix tables of other batches.
+
+- USB to BLE bursts: fixed 2026-10-20, see the changelog. What is left: a burst of 1200
+  messages at once lost 2%, all on the USB side (the FM-1's USB in count was 22 short; the
+  2048-byte ring, most likely), and the Status page's dropped figure adds BLE, USB and filter drops together, so a
+  panic to a USB port nobody reads looks like BLE loss. `tools/usb_to_ble.py` measures it.
+- TRS to BLE with a MIDI clock on: done 2026-10-20 (`tools/trs_test.py --ble`, the changelog).
+- Host mode and a stale bond (2026-10-20): the FM-1 kept keys for the PC from an earlier
+  pairing, the PC no longer had them; at connect the FM-1 asked for encryption, got status 06
+  (key missing), then no discovery, and dropped the link after 15 s (`no MIDI subscription`).
+  Any keyboard reset or told to forget the FM-1 would never work in host mode again until
+  Forget bonds. Fixed the same day (the bond deleted, the peer reconnected: `unbond_retry` in
+  `ble_host.c`), seen working the same night after two more fixes (the changelog). Still to see:
+  the hang-up variant (13 at encryption, no 06), handled the same way.
+- A phone's or tablet's MIDI app grabs any BLE MIDI device it sees: with the FM-1 in host mode, the
+  phone connected to the PC's "PC MIDI" test keyboard and held it, and a tablet's Casio app holds
+  the WU-BT10 (the FM-1 then connects but no discovery answers, 15 s, dropped). Turn their
+  Bluetooth off for host-mode bench tests (2026-10-20).
+- BLE timestamps and the clock master run on the 10 ms OS tick (`timer_get_ms()`): a receiver
+  that plays by the timestamps gets a clock spread of 4.3 ms at 200 bpm (3 ms on arrival), and
+  the clock master can only send on a tick. The key matrix's 10 kHz TIMER3 interrupt could keep
+  a 0.1 ms count for both.
+- With no program reading the PC's port, the first USB packet left behind stays in the IN FIFO
+  and reaches whoever opens the port next (seen: the All Sound Off of a BLE disconnect's panic).
+  A stale note-on would sound late; flush the FIFO when it has sat for a while.
+- The device card's "stack free bridge 0" before the bridge task's first sample (a few seconds
+  after boot) reads like an overflow: show "-" until sampled.
+- A line break under 1 ms still reaches the parser as a 00 byte (the timeout check needs the line
+  still low 1 ms after it).
+- A soak against the PC's Bluetooth longer than ~45 minutes measures the AX200 / BlueZ more than
+  the FM-1 (2026-10-20): power the adapter off and on (`bluetoothctl power off; ... on`) first.
 - Twice on 2026-10-19 the unit stayed enumerated on USB but answered no SysEx until a power
   cycle; the log's tail before a stall reset is saved now (`FM1_STALLLOG_ID`), read the boot
-  log after the next one.
+  log after the next one. Not seen again in the whole of 2026-10-20 (a 55-minute soak, the TRS
+  suite, about twenty installs): closed unless it comes back.
 - USB VID/PID: stock is 4c4a:c755 (read 2026-10-19, `hardware.md`); `app/usb/descriptor.c`
   keeps JieLi's 3654:4155 with the M-VAVE / FM-1 strings, which every installer finds by name.
   Decide whether to copy stock's ids (M-UPGRADE may look for them).
@@ -307,7 +427,6 @@ never the head. Stock v15 is the recovery path, not a prerequisite.
   panel; nothing documents PC3, PC4, PC5) and there is no schematic, so "free" cannot
   be shown from the trees. The board file keeps `tx_pin = -1`; the device log over
   SysEx is the console. Only worth revisiting if a boot never reaches USB.
-- Whether `log_putbyte` receives the vendor libraries' printf output (hardware).
 - jl-uboot-tool on the WL82 family (listed untested upstream), the soft key and the
   SDK vendor request on stock: `docs/recovery.md`.
 - **fm1-emu runs this firmware (2026-10-14)**, full and minimal builds, with the BLE

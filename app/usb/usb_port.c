@@ -16,7 +16,11 @@ int usb_port_enabled(void) { return settings_get()->usb_enabled; }
 /* called by the UI after the setting changed */
 void usb_port_apply(void)
 {
-    if (settings_get()->usb_enabled) {
+    static u8 applied = 1;                       /* USB starts enabled at boot */
+    u8 want = settings_get()->usb_enabled ? 1 : 0;
+    if (want == applied) return;                 /* a settings write with no change must not restart USB */
+    applied = want;
+    if (want) {
         if (usb_otg_online(0) == SLAVE_MODE) usb_start(0);
     } else {
         usb_stop(0);

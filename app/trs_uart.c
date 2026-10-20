@@ -28,14 +28,38 @@
 
 static u8 ring[RING] __attribute__((aligned(4)));
 static u32 rd;                                     /* the first byte not handed over yet */
+static volatile u32 n_rx_irq, n_ot_irq, n_bytes, n_breaks;   /* trs_uart_counts() */
+static volatile u32 con_seen;                      /* every CON0 | CON1 << 16 bit seen in the ISR, until read */
 
 static ___interrupt void trs_isr(void)
 {
-    u32 con = UT1->CON0, n;
+    u32 con = UT1->CON0, n, drop = 0;
     if (!(con & (BIT(14) | BIT(11)))) return;      /* neither RX nor timeout pending */
-    UT1->CON0 = (u16)(con | BIT(7) | BIT(12) | BIT(10));   /* latch the count, clear both */
+    con_seen |= con | (u32)UT1->CON1 << 16;
+    if (con & BIT(14)) n_rx_irq++;
+    if (con & BIT(11)) n_ot_irq++;
+    /* JieLi's own UART drivers, in this order ("the order cannot change"): latch the count, clear
+     * the timeout pending, clear the RX pending, a few cycles, then read the count. One write
+     * doing all three, read at once (the first version), handed every byte over one late (the
+     * count was still the previous latch's) and the receiver stopped interrupting after a while
+     * (the TRS tester, 2026-10-20). */
+    UT1->CON0 |= BIT(7);
+    if (con & BIT(11)) UT1->CON0 |= BIT(10);
+    UT1->CON0 |= BIT(12);
+    __asm__ volatile ("nop; nop; nop; nop; nop; nop; nop; nop");
     n = UT1->HRXCNT & 0xFFFFu;                     /* bytes DMA'd since the previous latch */
+    n_bytes += n;
     if (n > RING) n = RING;                        /* overrun: only what the ring still holds */
+    /* A line break (a cable going in or out under running status) arrives as one 00 byte: this
+     * UART flags no framing error. The timeout comes 1 ms after the last byte; if the line is
+     * still low then, that byte was a break, not data (an idle line is high, and in a stream no
+     * timeout comes). Before, the 00 completed a running-status note: 90 00 28 (the TRS tester,
+     * 2026-10-20). A break under 1 ms still gets through. */
+    if ((con & BIT(11)) && n && ring[(rd + n - 1) % RING] == 0 && !__gpio_read(IO_PORTH_08)) {
+        n--;
+        n_breaks++;
+        drop = 1;
+    }
     while (n) {
         u32 k = RING - rd;
         if (k > n) k = n;
@@ -43,7 +67,15 @@ static ___interrupt void trs_isr(void)
         rd = (rd + k) % RING;
         n -= k;
     }
+    rd = (rd + drop) % RING;                       /* past the break's byte */
 }
+
+void trs_uart_counts(u32 *rx_irq, u32 *ot_irq, u32 *bytes, u32 *breaks)
+{
+    *rx_irq = n_rx_irq; *ot_irq = n_ot_irq; *bytes = n_bytes; *breaks = n_breaks;
+}
+
+u32 trs_uart_con(void) { u32 c = con_seen | UT1->CON0 | (u32)UT1->CON1 << 16; con_seen = 0; return c; }
 
 int trs_uart_init(void)
 {

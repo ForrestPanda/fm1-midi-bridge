@@ -12,6 +12,7 @@ typedef struct {
     u8 addr[6];
     s8 rssi;
     u8 used;
+    u8 rsp_seen;            /* a scan response of its was logged */
     char name[20];
 } ble_host_device;
 #define BLE_HOST_MAX_DEVICES 8

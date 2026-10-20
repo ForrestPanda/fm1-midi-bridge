@@ -15,6 +15,7 @@
 #include "usb/usb_midi.h"
 #include "health.h"
 #include "fm1_log.h"
+#include "midilog.h"
 #include <stdio.h>
 
 #define LOG_TAG_CONST       APP
@@ -45,6 +46,9 @@ static char toast_text[UI_COLS + 1];
 static u32 toast_until;                         /* ms; 0 = none */
 
 keys_state *ui_keys(void) { return &keys; }
+
+static volatile u8 settings_changed;
+void ui_settings_changed(void) { settings_changed = 1; }
 
 void ui_keys_reload(void)                   /* after a settings change: release what is held, re-init */
 {
@@ -91,6 +95,8 @@ static int keys_dispatch(const mx_event *e)
         if (ui_buttons_page_pick(e->id - MX_BTN_KEY0)) return 1;
     }
     if (e->id >= MX_BTN_KEY0 && cur == PAGE_BUTTONS) return 1;
+    if (cur == PAGE_LOG && (e->id == MX_BTN_FX || e->id == MX_BTN_SCL || e->id == MX_BTN_ENV || e->id == MX_BTN_LFO))
+        return 0;                           /* the MIDI log's filter buttons (ui_pages.c), not their MIDI jobs */
     /* a function button or a note key with a MIDI job: works even with the keyboard off */
     {
         int slot = btn_slot(e->id);
@@ -193,18 +199,38 @@ static void toast_draw(void)
 }
 
 /* ---- battery ---- */
-/* Thresholds on the divider reading, uncalibrated until a unit is measured (verify on
- * hardware: the stock firmware's own low-battery point is unknown). */
-#define BAT_FULL_MV 4000
-#define BAT_3_MV    3800
-#define BAT_2_MV    3650
-#define BAT_LOW_MV  3500
+/* PB1 is the battery behind a divider (SARADC ch3). Until 2026-10-20 it was read without being set
+ * up as an analog input or added to the sampled channels: 0 mV, always. The thresholds are
+ * Felucca's and SLOOP's, on the same raw 10-bit reading (531 / 561 / 591 for 1 / 2 / 3 of their
+ * three bars, origin not documented; the only figures for this board); the fourth cell is ours:
+ * the first unit fully charged on USB read 619, so 611 shows four cells then. The divider looks like 1:2: on USB the
+ * first unit read raw 619, 2042 mV at the pin, 4.08 V for the cell, and Felucca's steps come to
+ * 3.42 / 3.62 / 3.81 V, ours 3.94 V. The screens show only the bar, the System page the cell
+ * voltage, as twice the pin, and the raw value (the user, 2026-10-20). */
+#define BAT_FULL_RAW 611
+#define BAT_3_RAW    591
+#define BAT_2_RAW    561
+#define BAT_LOW_RAW  531
+static u16 bat_raw;                              /* smoothed */
+
+static void battery_init(void)
+{
+    gpio_set_die(IO_PORTB_01, 0); gpio_set_direction(IO_PORTB_01, 1); gpio_set_pull_up(IO_PORTB_01, 0); gpio_set_pull_down(IO_PORTB_01, 0);
+    adc_add_sample_ch(AD_CH_PB01);
+}
+static void battery_read(void)
+{
+    u16 r = (u16)adc_get_value(AD_CH_PB01);
+    bat_raw = bat_raw ? (u16)(bat_raw + ((s32)r - bat_raw) / 4) : r;
+    bat_mv = (u16)adc_get_voltage(AD_CH_PB01);
+}
 
 u16 ui_battery_mv(void) { return bat_mv; }
-int ui_battery_low(void) { return bat_mv && bat_mv < BAT_LOW_MV; }
+u16 ui_battery_raw(void) { return bat_raw; }
+int ui_battery_low(void) { return bat_raw && bat_raw < BAT_LOW_RAW; }
 void ui_battery_bar(char *buf, int n)
 {
-    int cells = bat_mv >= BAT_FULL_MV ? 4 : bat_mv >= BAT_3_MV ? 3 : bat_mv >= BAT_2_MV ? 2 : bat_mv >= BAT_LOW_MV ? 1 : 0, i;
+    int cells = bat_raw >= BAT_FULL_RAW ? 4 : bat_raw >= BAT_3_RAW ? 3 : bat_raw >= BAT_2_RAW ? 2 : bat_raw >= BAT_LOW_RAW ? 1 : 0, i;
     if (n < 7) { if (n) buf[0] = 0; return; }
     buf[0] = '[';
     for (i = 0; i < 4; i++) buf[1 + i] = i < cells ? '#' : '.';
@@ -357,8 +383,9 @@ static void ui_task(void *p)
     keys_init(&keys, settings_get()->kbd_channel, settings_get()->kbd_octave, settings_get()->kbd_velocity);
     gpio_set_die(IO_PORTB_06, 0); gpio_set_direction(IO_PORTB_06, 1); gpio_set_pull_up(IO_PORTB_06, 0); gpio_set_pull_down(IO_PORTB_06, 0);
     adc_add_sample_ch(AD_CH_PB06);                       /* MASTER pot */
+    battery_init();
     last_input_ms = timer_get_ms();
-    bat_mv = (u16)adc_get_voltage(AD_CH_PB01);
+    battery_read();
     enter(PAGE_SPLASH);
     for (;;) {
         u32 now = timer_get_ms();
@@ -377,10 +404,17 @@ static void ui_task(void *p)
             last_tick_ms = now;
             if (toast_until && (s32)(now - toast_until) >= 0) { toast_until = 0; ui_invalidate(); }
             if (ui_pages[cur]->tick) ui_pages[cur]->tick();
+            if (settings_changed) {              /* a write from the editor (bridge task): the panel is this task's */
+                settings_changed = 0;
+                ui_keys_reload();
+                lcd_invert(settings_get()->invert);
+                ui_invalidate();
+            }
 #if FM1_BLE_HOST_EN
             ble_host_tick();
 #endif
-            { static u8 hk; if (++hk >= 10) { hk = 0; health_check(); fm1_log_stack_note(FM1_TASK_UI); bat_mv = (u16)adc_get_voltage(AD_CH_PB01);
+            { static u8 hk; if (++hk >= 10) { hk = 0; health_check(); fm1_log_stack_note(FM1_TASK_UI); battery_read();
+                                       { static u8 bl; if (++bl >= 30) { bl = 0; fm1_log("bat: raw %u, pin %u mV", bat_raw, bat_mv); } }
                                        if (now > 20000) health_mark_clean(); } }   /* 20 s up: not a crash loop */
             if (settings_get()->kbd_vel_source == 1) {           /* MASTER pot: 0..3300 mV -> 1..127 */
                 u32 mv = adc_get_voltage(AD_CH_PB06);
@@ -389,6 +423,18 @@ static void ui_task(void *p)
             }
             mx_led_set(mx, MX_BTN_HOME, cur == PAGE_HOME);
             mx_led_set(mx, MX_BTN_GLO, settings_get()->ble_link_mode == BLE_LINK_POWER_SAVING);
+            {   /* the MIDI log's filter buttons: lit while their kind is shown; dark again after the page */
+                static u8 log_leds;
+                u8 hide = settings_get()->log_hide;
+                if (cur == PAGE_LOG || log_leds) {
+                    int on = cur == PAGE_LOG;
+                    mx_led_set(mx, MX_BTN_FX, on && !(hide & MIDILOG_HIDE_NOTES));
+                    mx_led_set(mx, MX_BTN_SCL, on && !(hide & MIDILOG_HIDE_PC));
+                    mx_led_set(mx, MX_BTN_ENV, on && !(hide & MIDILOG_HIDE_CC));
+                    mx_led_set(mx, MX_BTN_LFO, on && !(hide & MIDILOG_HIDE_OTHER));
+                    log_leds = (u8)on;
+                }
+            }
             {   /* activity: REC blinks on USB traffic, PLAY on BLE traffic (unless mapped to MIDI) */
                 static u32 last_usb, last_ble;
                 midi_router *r = bridge_router();

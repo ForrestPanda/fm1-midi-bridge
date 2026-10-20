@@ -61,6 +61,8 @@ int  os_sem_pend(OS_SEM *sem, int timeout_ticks)
 
 /* ---- UART1 ---- */
 int trs_uart_init(void) { return sim.uart_fail ? -1 : 0; }   /* the register-level driver (trs_uart.c) is target-only */
+void trs_uart_counts(u32 *rx_irq, u32 *ot_irq, u32 *bytes, u32 *breaks) { *rx_irq = *ot_irq = *bytes = *breaks = 0; }
+u32 trs_uart_con(void) { return 0; }
 static int uart_handle;
 void *dev_open(const char *name, void *arg) { (void)name; (void)arg; return sim.uart_fail ? NULL : &uart_handle; }
 int dev_ioctl(void *dev, u32 cmd, u32 arg) { (void)dev; (void)cmd; (void)arg; return 0; }

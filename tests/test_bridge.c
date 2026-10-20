@@ -319,6 +319,43 @@ static void test_ble_busy(void)
     sim.ble_full = 0;
 }
 
+/* a burst of several packets behind a stack that is busy for 50 ms: every packet waits its
+ * turn in the queue, nothing lost (before the queue, all but the last two packets went) */
+static void test_ble_burst(void)
+{
+    uint8_t burst[90]; int i; uint32_t drops0;
+    fresh();
+    drops0 = bridge_ble_drops();
+    for (i = 0; i < 30; i++) { burst[3 * i] = 0x90; burst[3 * i + 1] = (uint8_t)(40 + i); burst[3 * i + 2] = 0x64; }
+    sim.ble_full = 1;
+    sim_trs_push(burst, sizeof burst); steps_ms(5, 10);
+    CHECK(sim.ble_out_n == 0);
+    sim.ble_full = 0;
+    steps_ms(10, 10);
+    CHECK(sim.ble_out_n >= 4 && ble_msgs() == 30 && bridge_ble_drops() == drops0);
+    for (i = 0; i < 30; i++) CHECK(got[i].b[1] == 40 + i);           /* in order */
+}
+
+/* real time inside a SysEx from TRS: the SysEx reaches USB whole, the real time around it */
+static void test_usb_sysex_realtime(void)
+{
+    static const uint8_t in[] = { 0xF0, 0x7D, 0x01, 0x02, 0xF8, 0x03, 0x04, 0xFA, 0x05, 0xF7 };
+    static const uint8_t want[] = { 0xF0, 0x7D, 0x01, 0x02, 0x03, 0x04, 0x05, 0xF7 };
+    uint8_t sx[16]; int i, k, n = 0, rt = 0;
+    fresh();
+    for (k = 0; k < 3; k++) {                                        /* again: no carry left behind */
+        sim_clear_out();
+        sim_trs_push(in, sizeof in); steps(2);
+        usb_msgs();
+        n = 0; rt = 0;
+        for (i = 0; i < ngot; i++) {
+            if (got[i].kind == MIDI_KIND_SYSEX) { memcpy(sx + n, got[i].b, got[i].len); n += got[i].len; }
+            else if (got[i].kind == MIDI_KIND_REALTIME) rt++;
+        }
+        CHECK(n == (int)sizeof want && memcmp(sx, want, sizeof want) == 0 && rt == 2);
+    }
+}
+
 static void test_usb_ring_full(void)
 {
     static uint8_t burst[1024]; int i;
@@ -357,6 +394,8 @@ int main(void)
     test_merge_guard();
     test_usb_ring_full();
     test_ble_busy();
+    test_ble_burst();
+    test_usb_sysex_realtime();
     test_no_uart();
     if (fails) { printf("%d failure(s)\n", fails); return 1; }
     printf("bridge tests passed\n");
