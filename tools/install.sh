@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
 # Install build/fm1bridge.fwsc on a connected FM-1 with Felucca's installer
 # (needs: pip3 install mido python-rtmidi). --info shows the connected identity.
 #   tools/install.sh [--info | fm1_install.py options]

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 /* Derived from the JieLi AC79 SDK apps/common/ble/le_trans_data.c (Apache-2.0): the
  * same GATT server glue, serving the BLE MIDI 1.0 service instead of the demo profile. */
 /*********************************************************************************************

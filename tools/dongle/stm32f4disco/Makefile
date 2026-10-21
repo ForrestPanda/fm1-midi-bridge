@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # The USB key for an STM32F4-Discovery: make, then make flash (openocd, the board's ST-Link).
 CC = arm-none-eabi-gcc
 CFLAGS = -mcpu=cortex-m4 -mthumb -O2 -Wall -Wextra -ffreestanding -nostdlib -fno-builtin

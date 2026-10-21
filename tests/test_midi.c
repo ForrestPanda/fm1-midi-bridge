@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Host tests: parser, BLE MIDI codec, USB-MIDI codec, and round trips. */
 #include "../app/midi/midi_msg.h"
 #include "../app/midi/blemidi.h"

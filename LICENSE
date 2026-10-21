@@ -1,6 +1,6 @@
 fm1-midi-bridge: licensing
 
-This tree mixes code under three licences and builds against closed libraries.
+This tree mixes code under three licences and builds against binary-only libraries.
 Each source file carries an SPDX-License-Identifier line that is the authority
 for that file; this file is the map.
 
@@ -10,6 +10,9 @@ for that file; this file is the map.
    app/input/, app/settings.c, app/update/, app/fm1_log.c, app/util/,
    app/bt_ble/ble_host.c, ble_port.c, adv_parse.c, app/minimal.c, tests/,
    tools/ (except tools/fm1pkg_make.py), web/editor.html and docs/.
+   The exception in app/ui/: font.h and font_big.h are bitmaps of DejaVu Sans
+   Mono glyphs rendered by tools/mkfont.py, under the Bitstream Vera Fonts
+   licence (SPDX Bitstream-Vera) like the font itself.
 
    Copyright (c) 2026 David Cerdeira
 
@@ -52,13 +55,16 @@ for that file; this file is the map.
    an install; its source is in the Felucca repository. Nothing under the GPL
    is compiled or linked into the bridge firmware.
 
-4. Closed libraries (not in this tree, not ours to license)
+4. Binary-only libraries (not in this tree, not ours to license)
 
-   The firmware links JieLi's proprietary Bluetooth, USB and kernel libraries
-   shipped as binary .a files in the AC79 SDK, under JieLi's terms for that
-   SDK. They are not included here; a build needs the SDK checkout. A binary
-   package of this firmware therefore carries JieLi's binary code, and whoever
-   redistributes one does so under those terms.
+   The firmware links JieLi's Bluetooth, USB and kernel libraries, shipped
+   without source as binary .a files in the AC79 SDK. JieLi publishes that SDK
+   repository, the libraries included, as an open-source project under the
+   Apache License 2.0 (the LICENSE at the top of
+   https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK, tag
+   AC79NN_SDK_V1.2.1_2023-12-13). They are not included here; a build needs
+   the SDK checkout. A binary package of this firmware carries their code, and
+   is redistributed under those terms.
 
 The FM-1 hardware, its stock firmware and the names M-VAVE and FM-1 belong to
 their owners. This project is not affiliated with M-VAVE.

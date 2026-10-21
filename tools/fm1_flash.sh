@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
 # Whole-flash backup and restore of an FM-1 in mask-ROM USB download mode (UBOOT1.00),
 # through kagaimiq's jl-uboot-tool (MIT). Get it next to this tree or point JLUBOOT at it:
 #   git clone https://github.com/kagaimiq/jl-uboot-tool ../../jl-uboot-tool

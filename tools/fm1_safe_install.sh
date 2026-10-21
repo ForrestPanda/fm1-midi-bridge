@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
 # The first install of a firmware on an FM-1, the way docs/recovery.md orders it, over one USB cable:
 #   1. the identity of what runs                      (fm1_install.py --info)
 #   2. the SysEx soft key: the chip's ROM download mode  (fm1_recover.py --softkey; stock V15 honours it)

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 /* Derived from the JieLi AC79 SDK apps/common/usb/device/usb_device.c (Apache-2.0); adds the MIDI class. */
 #include "usb/device/usb_stack.h"
 #include "usb_midi.h"

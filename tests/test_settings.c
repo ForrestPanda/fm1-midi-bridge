@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Host test of app/settings.c over a RAM blob. */
 #include "../app/settings.h"
 #include "../app/midi/router.h"

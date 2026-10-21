@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
 # Package build/app.bin into an installable FM-1 package, using Felucca's tools as
 # external programs (GPL-3 tools run at build time; nothing of them is linked into
 # our firmware):

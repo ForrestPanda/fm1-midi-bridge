@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Put an FM-1 that still enumerates on USB into the chip's mask-ROM USB download
 mode (UBOOT1.00), where jl-uboot-tool can rewrite the flash (tools/fm1_flash.sh).
 

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 /* Derived from the JieLi AC79 SDK apps/demo/demo_ble (Apache-2.0). Modified for the M-VAVE FM-1. */
 #ifndef APP_CONFIG_H
 #define APP_CONFIG_H

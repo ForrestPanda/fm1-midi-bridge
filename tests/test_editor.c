@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Host test of the SysEx settings editor: info, get, set, status; and the struct
  * offsets web/editor.html relies on. */
 #include "../app/editor.h"

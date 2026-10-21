@@ -63,8 +63,8 @@ dumps and restores the whole flash from there through jl-uboot-tool.
 
 MIT for our code, Apache-2.0 for the files derived from the AC79 SDK, GPL-3 for the
 packager fork and the loader it bundles (host-side and separate programs, never linked
-in); the firmware links JieLi's closed libraries from the SDK. The map is `LICENSE`, the
-authority per file its SPDX line. Not ready to share yet: `docs/plan.md`, "Before sharing".
+in); the firmware links JieLi's binary-only libraries from the SDK (Apache-2.0 like the
+rest of it). The map is `LICENSE`, the authority per file its SPDX line. Not ready to share yet: `docs/plan.md`, "Before sharing".
 
 ## Why not a Felucca fork
 

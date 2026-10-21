@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
 """Survey a 1 MB FM-1 flash dump: which 4 KB sectors hold anything but 0xFF, by region of the
 flash map (docs/hardware.md), and which of them lie where a firmware writes (recovery.md,
 "Before the first install": the SMK-37 keeps its factory calibration at 0xC1000 on the same chip;

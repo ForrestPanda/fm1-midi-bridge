@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 # fm1-midi-bridge: SDK application Makefile, derived from the AC79 SDK demo_ble
 # Makefile (Apache-2.0). Builds against an SDK checkout outside this tree.
 #

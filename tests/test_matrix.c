@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Host test of the panel matrix decoder. */
 #include "../app/input/matrix.h"
 #include <stdio.h>

@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
 # app.bin = .text + .data + .ram0_data + .cache_ram_data of the ELF, as the SDK's
 # download.bat does (cpu/wl82/tools/download.c).  mkapp.sh ELF OUT.bin
 set -e

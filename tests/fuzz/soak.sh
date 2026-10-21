@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
 # Long fuzz run with a fresh seed, for cron or an idle machine:
 #   sh tests/fuzz/soak.sh [iterations]        default 3000000 per harness (about half an hour)
 # Appends one line per run to build/fuzz/soak.log; a failure keeps the run's full output

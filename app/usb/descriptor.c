@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 /**
  * @file descriptor.c  (fm1-midi-bridge copy of the AC79 SDK apps/common/usb/device/descriptor.c, Apache-2.0:
  *                      manufacturer and product strings say M-VAVE / FM-1 so hosts and installers find the port by name)

@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
 # Fuzz the parsers that run in the bridge task, and the bridge task itself, under ASan + UBSan.
 #   sh tests/fuzz/run_fuzz.sh [iterations]        default 200000 per harness, ~2 min in all
 # FUZZ_SEED=n picks another random sequence (see driver.c); a crash leaves its input in

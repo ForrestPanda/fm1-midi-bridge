@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: MIT
 # Host tests: the MIDI code, the update entry, settings, the matrix decoder, the
 # advertising parser, the editor and the bridge task on a simulator. Needs a C compiler.
 set -e

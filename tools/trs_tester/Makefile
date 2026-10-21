@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 # The FM-1's TRS input under test: an STM32F4-Discovery that plays a byte script from the PC on its
 # MIDI OUT (PA2, 31250 baud) with microsecond timing. tools/trs_test.py writes the scripts and
 # checks what the FM-1 forwards. Board code, TinyUSB and CMSIS come from the TRS MIDI bridge project

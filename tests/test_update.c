@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Host test of the update step-one core against a simulated installer serving
  * the real package (build/fm1bridge.fwsc) and a simulated 1 MB flash. */
 #include "../app/update/fm1_update.h"

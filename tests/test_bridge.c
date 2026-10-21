@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /* Host test of the bridge task (app/bridge.c) on the simulator in tests/host:
  * ports in and out, the SysEx interception for the updater and the editor, the
  * inject ring, panic, link-drop panic, the clock master and the recorder. */

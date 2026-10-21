@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 #include "../app/bt_ble/adv_parse.h"
 #include <stdio.h>
 #include <string.h>
