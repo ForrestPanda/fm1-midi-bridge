@@ -6,6 +6,14 @@
  *   SER PA4, SRCLK PA3, RCLK PA1      outputs
  *   rows PA0, PA5, PA6, PA7, PA8, PB7 inputs with pull-up, low = closed
  *   LEDs PA9 (row PA5), PA10 (PA6), PH6 (PA7), PH9 (PA8), active high
+ *   /OE PA2 (the 595s' output enable, also the panel backlight, both active low)
+ *
+ * Screen off (matrix_dark): PA2 high turns the backlight off but also floats the columns, and
+ * then nothing reads (hardware.md). So while dark the ISR holds PA2 low only for its own few
+ * microseconds: the column latched last tick is driven again, the rows settle MX_DARK_SETTLE_US
+ * and are read, the next column goes out, PA2 back high. The backlight and the button LEDs (on
+ * the same columns) are lit under a tenth of the time. On the first unit (2026-10-24) the
+ * backlight went dark and the panel woke again.
  */
 #include "system/includes.h"
 #include "app_config.h"
@@ -29,6 +37,13 @@
 #define MX_IRQ_PRIO 3
 #endif
 
+/* the rows of a driven column settle in nanoseconds (a closed switch on a 595 output); 4 us is margin */
+#ifndef MX_DARK_SETTLE_US
+#define MX_DARK_SETTLE_US 4
+#endif
+#define DARK_SPIN_MAX 4000           /* bound on the settle loop whatever the timer does */
+
+#define PA_OE    BIT(2)
 #define PA_SER   BIT(4)
 #define PA_SRCLK BIT(3)
 #define PA_RCLK  BIT(1)
@@ -45,6 +60,8 @@ static SEC_USED(.volatile_ram) u8 dbg_raw[16];
 static SEC_USED(.volatile_ram) u16 dbg_force_word = 0xFFFF;         /* test: this word on the 595s instead of the scan */
 static SEC_USED(.volatile_ram) u16 dbg_force_cnt;
 static SEC_USED(.volatile_ram) u8 dbg_force_rows;
+static SEC_USED(.volatile_ram) volatile u8 dark;
+static SEC_USED(.volatile_ram) u32 dark_settle_cnt;              /* timer counts after the tick */
 
 #define RAMCODE SEC_USED(.volatile_ram_code)
 
@@ -77,6 +94,11 @@ static ___interrupt RAMCODE void mx_isr(void)
     u8 closed = 0;
     if (!(TMR->CON & BIT(15))) return;
     TMR->CON |= BIT(14);                          /* clear pending */
+    if (dark) {                                   /* the columns back on, the rows settle */
+        u32 n = 0;
+        JL_PORTA->OUT &= ~PA_OE;
+        while (TMR->CNT < dark_settle_cnt && ++n < DARK_SPIN_MAX) ;
+    }
     pa = JL_PORTA->IN;
     pb = JL_PORTB->IN;
     dbg_ticks++; dbg_pa = pa; dbg_pb = pb;
@@ -102,6 +124,7 @@ static ___interrupt RAMCODE void mx_isr(void)
     leds_set(0);
     shift_out(mx_shift_word(next_col));
     leds_set(state.led[next_col]);
+    if (dark) JL_PORTA->OUT |= PA_OE; else JL_PORTA->OUT &= ~PA_OE;
     if (cur_col < sizeof dbg_raw) dbg_raw[cur_col] = closed;
     mx_feed_column(&state, cur_col, closed);
     cur_col = next_col;
@@ -120,12 +143,16 @@ static void timer_start(u32 us)
     TMR->CON |= BIT(14);
     TMR->PRD = prd;
     TMR->CON |= (u32)psc_code[psc] << 4;
+    dark_settle_cnt = prd * MX_DARK_SETTLE_US / us;
     request_irq(IRQ_TIMER3_IDX, MX_IRQ_PRIO, mx_isr, 0);
     TMR->CON |= BIT(0);
     log_info("matrix scan: timer clk %u, prd %u psc %u", clk, prd, psc);
 }
 
 mx_state *matrix_state(void) { return &state; }
+
+/* the UI's screen off: from the next tick on the ISR keeps PA2 high but for its read */
+void matrix_dark(int on) { dark = on ? 1 : 0; }
 
 /* the editor's matrix readout (editor.c has a weak stand-in for builds without the matrix) */
 void editor_port_matrix(uint32_t *ticks, uint32_t *pa, uint32_t *pb, uint8_t *raw, uint32_t ncols)

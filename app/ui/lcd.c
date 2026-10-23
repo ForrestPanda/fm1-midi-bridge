@@ -168,12 +168,13 @@ void lcd_invert(int on)
 
 void lcd_backlight(int on)
 {
-    gpio_direction_output(PIN_BL, on ? 0 : 1);      /* active low; never off while running: lcd_sleep is the screen-off */
+    gpio_direction_output(PIN_BL, on ? 0 : 1);      /* active low; never off from here: the matrix scan dims it (matrix_dark) */
 }
 
-/* Screen off and on through the panel, PA2 untouched: PA2 is also the key matrix's 595 /OE
+/* Screen off and on through the panel, PA2 untouched here: PA2 is also the key matrix's 595 /OE
  * (Felucca src/lcd.c, found on their 1.1.5; found again here on the first unit, 2026-10-19: with
- * the "backlight" off no button, key or knob read and nothing could wake the screen). The panel
+ * the "backlight" off no button, key or knob read and nothing could wake the screen), so the
+ * backlight goes off through the matrix scan, which lights it only for its reads. The panel
  * keeps its RAM asleep; it wants 120 ms after SLPIN before SLPOUT and 120 ms after SLPOUT
  * before DISPON. */
 static u32 slept_ms;

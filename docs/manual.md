@@ -284,7 +284,7 @@ here, clear.
 ### Display
 
 ![Display page](ui-examples/10-display.png)
-Screen off after never, 10 s, 30 s, 1 min or 5 min (the panel sleeps, its backlight stays lit: the backlight line also enables the key matrix); any press or knob turn wakes it, and that input does nothing else. The keys,
+Screen off after never, 10 s, 30 s, 1 min or 5 min (the panel sleeps and the backlight and button LEDs go dark but for a faint glow: the backlight line also enables the key matrix, so it is lit for a few microseconds at each key read); any press or knob turn wakes it, and that input does nothing else. The keys,
 the knobs on the Keyboard page and every MIDI job keep working while the panel is
 dark, so the first pedal press after a pause is never lost. Invert colours.
 

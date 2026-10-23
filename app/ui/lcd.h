@@ -16,7 +16,7 @@ void lcd_text(u16 col, u16 row, const char *s, u16 fg, u16 bg);
 #define LCD_BIG_COLS 15
 #define LCD_BIG_ROWS 8
 void lcd_text_big(u16 col, u16 row, const char *s, u16 fg, u16 bg);
-void lcd_backlight(int on);                             /* PA2: also the key matrix's /OE, so only ever on */
+void lcd_backlight(int on);                             /* PA2: also the key matrix's /OE; off is matrix_dark's */
 void lcd_sleep(int on);                                 /* the screen off (panel sleep) and back on, ~130 ms */
 void lcd_invert(int on);
 u32  lcd_spi_timeouts(void);                            /* transfers that never finished (0 on a healthy panel) */                                /* 0 = the panel's native IPS look */

@@ -29,6 +29,7 @@ const u16 UI_C_TITLE_BG = RGB565(0, 72, 112), UI_C_TITLE_ST = RGB565(160, 200, 2
 
 extern const ui_page *ui_pages[PAGE_COUNT];     /* ui_pages.c */
 extern mx_state *matrix_state(void);
+extern void matrix_dark(int on);
 extern u16 bt_ble_is_connected(void);
 
 #define STACK_DEPTH 8                           /* status > menu > System > Presets > slot > confirm is six */
@@ -311,22 +312,31 @@ static u32 backlight_ms(void)
     return t[i < BACKLIGHT_COUNT ? i : BACKLIGHT_30S];
 }
 
+/* off: the panel sleeps, then the matrix scan takes PA2 (the backlight) and lights it only for
+ * its reads; on: the panel wakes (~130 ms), then the backlight */
+static void screen_on(int on)
+{
+    backlight_on = (u8)on;
+    if (on) { lcd_sleep(0); matrix_dark(0); ui_invalidate(); }
+    else    { lcd_sleep(1); matrix_dark(1); }
+}
+
 static void backlight_poll(u32 now)
 {
     u32 t = backlight_ms();
-    if (backlight_on && t && now - last_input_ms >= t) { backlight_on = 0; lcd_sleep(1); }
+    if (backlight_on && t && now - last_input_ms >= t) screen_on(0);
 }
 
 /* ---- task ---- */
 static void dispatch(const mx_event *e)
 {
     if (keys_dispatch(e)) {                 /* MIDI jobs first: a note or a page turn works with the panel dark */
-        if (!backlight_on) { backlight_on = 1; lcd_sleep(0); ui_invalidate(); }
+        if (!backlight_on) screen_on(1);
         return;
     }
     if (!backlight_on) {                    /* any other input only wakes the panel, on the press itself */
         if (e->type == MX_EV_BTN_DOWN) { wake_btn = e->id; waking = 1; }
-        if (e->type != MX_EV_BTN_UP || !waking) { backlight_on = 1; lcd_sleep(0); ui_invalidate(); }
+        if (e->type != MX_EV_BTN_UP || !waking) screen_on(1);
         if (e->type == MX_EV_BTN_UP) waking = 0;
         return;
     }

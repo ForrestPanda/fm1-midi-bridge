@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Screen off turns the backlight off too, not just the panel: the matrix scan holds PA2 (backlight
+  and the 595s' /OE) low only for the few microseconds of each read, so the backlight and the button
+  LEDs are dark but for a faint glow, and every press still reads. `MX_DARK_SETTLE_US` (4) is the
+  rows' settle. Verified by the user on the unit (2026-10-24): the backlight goes dark and the
+  panel wakes again.
 - Preset names: up to 12 characters of plain ASCII per slot, set in the web editor's Presets card
   (or `fm1_editor.py names SLOT "NAME"`), shown on the FM-1's Presets page in place of the summary
   and on a slot's own page. Their own flash record (id 16), so the settings layout and the presets
