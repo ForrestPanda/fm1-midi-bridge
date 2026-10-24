@@ -10,8 +10,10 @@ aroum/fm1-custom-fw teardown notes and product reviews. Facts, not code. Items m
   Bluetooth (BR/EDR + BLE 5.0). Felucca and forks never enable the radio; the
   stock firmware does BLE MIDI (hold HOME to pair), so the antenna is populated.
 - RAM 512 KB, SPI NOR flash 1 MB (vendor stack: ~250 KB flash, 60-80 KB RAM).
-- No JTAG/SWD/UART debug pads, no boot button. Recovery only through the mask-ROM
-  USB download mode (UBOOT) forced with a dongle on D+/D-, or FM-1-transporter.
+- No JTAG/SWD/UART debug pads, no boot button. Recovery goes through the mask-ROM USB
+  download mode (UBOOT): from a running firmware by the SysEx soft key (verified on stock
+  V15 and the bridge), from a dead one by a key dongle on D+/D- at power-up (verified:
+  an STM32F4-Discovery, `tools/dongle/stm32f4disco/`). `docs/recovery.md`.
 
 ## Jacks and ports
 
@@ -78,13 +80,13 @@ The problem is pins and holes:
   (codec output, AC-coupled, 48 kHz cannot form 32 µs bits), USB host to a USB-MIDI-to-DIN
   box (no VBUS supply on the board, no MIDI host class in the SDK).
 
-## Flash map (stock / Felucca layout)
+## Flash map (stock layout; the VM end is ours)
 
 | Range | What |
 | --- | --- |
 | 0x00000 - 0x04000 | flash head: JLFS entries, SPL `uboot.boot`, `isd_config.ini` (holds the chip key). Never written by updates. |
 | 0x04000 - 0x93000 | app area (`app_area_head`, `app.bin`, `cfg_tool.bin`, `eq_cfg_hw.bin`), SFC-encrypted with the chip key |
-| 0x93000 - 0xE0000 | VM / user data region. First unit, stock V15 (dump of 2026-10-19): one sector at 0x93000 (the SDK VM, header `55 AA AA 55`), 0x94000..0xDFFFF blank: nothing of the unit's where the drummer's songs go (0xA0000..0xC3FFF), no calibration at 0xC0000..0xC2FFF |
+| 0x93000 - 0xE0000 | VM / user data region (stock and Felucca packages declare 0x93000 - 0xE9000; our packager fork ends it at 0xE0000, `plan.md`). First unit, stock V15 (dump of 2026-10-19): one sector at 0x93000 (the SDK VM, header `55 AA AA 55`), 0x94000..0xDFFFF blank: nothing of the unit's where the drummer's songs go (0xA0000..0xC3FFF), no calibration at 0xC0000..0xC2FFF |
 | 0xE0000 - 0xE5000 | update loader staging area (Felucca's choice); blank on stock |
 | 0xE8000 | one sector of stock's (first unit) |
 | 0xE9000 | BTIF (1 sector; holds data on the first unit) |

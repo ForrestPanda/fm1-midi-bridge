@@ -3,7 +3,12 @@
 This firmware turns the M-VAVE FM-1 into a MIDI bridge and a small controller. It
 replaces the synthesizer firmware; the keys, knobs, buttons, screen, USB port,
 Bluetooth and the 3.5 mm MIDI input all stay in use, the sound engine does not.
-M-VAVE's own updater puts the original firmware back at any time.
+The original firmware goes back on at any time from M-VAVE's official package
+("Updating and going back").
+
+**Alpha.** Tested on one FM-1 (since 2026-10-19), with Android and Linux; iOS and macOS
+are untested. Read `docs/install.md` before installing, and `docs/recovery.md` if you
+want to be ready for the worst case.
 
 ## What it does
 
@@ -22,6 +27,18 @@ M-VAVE's own updater puts the original firmware back at any time.
 
 Every route can be switched on or off, filtered by channel, remapped to a channel,
 and told whether to pass clock and SysEx.
+
+## Connecting
+
+- **USB**: plug the FM-1 into a computer, phone or tablet. It is a class-compliant MIDI
+  device named "FM-1" (ALSA: "FM-1 MIDI 1"); no driver.
+- **Bluetooth**: the FM-1 advertises as **"FM-1 MIDI"** (BLE MIDI). Connect from the MIDI
+  app, not from the system's Bluetooth settings: on Android an app with its own BLE MIDI
+  connect (or a helper such as "MIDI BLE Connect"), on macOS Audio MIDI Setup's Bluetooth
+  panel, on iOS an app's Bluetooth MIDI page (both untested). Pairing is optional: the FM-1
+  bonds only when the other side asks.
+- **TRS MIDI IN**: a 3.5 mm TRS MIDI cable (Type A) from the sending device.
+- **A Bluetooth MIDI keyboard**: Bluetooth page, *Host mode* on, *Scan devices*.
 
 ## The panel
 
@@ -52,8 +69,12 @@ The controls that drive every page are the same:
 
 The other buttons and the 27 keys are free for MIDI jobs. The button LEDs mean:
 HOME lit = the Status page; GLO lit = power saving on; REC blinks on USB traffic
-and PLAY on Bluetooth traffic unless you gave them a MIDI job; a key or button lights
-while it is held and sending.
+and PLAY on Bluetooth traffic while they have no MIDI job (PLAY starts out with one,
+CC 64: clear it on the Button MIDI page to get its LED and its Recorder and Clock
+master use back); a key or button lights while it is held and sending.
+
+The screenshots are renderings of the panel at twice its size (`tools/ui_mock.py`, from
+the firmware's font and layout); the real panel is 240 by 240 pixels.
 
 The title row is a blue band, the highlighted row a white bar, so the two are never
 confused. Every title row ends with the link status, "U:ok B:adv" for example: USB "ok" when
@@ -177,10 +198,12 @@ you what it actually sends. OCT+ resets the counts.
 
 ![Recorder page](ui-examples/23-recorder.png)
 
-Records what arrives on the inputs, up to 2048 events with their timing, and plays
-it back to USB, Bluetooth or both, once or looped. The REC and PLAY buttons toggle
-recording and playback on this page when they have no MIDI job. Use it to send the
-same phrase to two apps and compare, or as a scratch looper. SysEx is not recorded.
+Records what arrives on TRS, USB and Bluetooth, up to 2048 events with their timing,
+and plays it back to USB, Bluetooth or both, once or looped. The FM-1's own keys are
+not recorded, and neither is SysEx. The REC and PLAY buttons toggle recording and
+playback on this page when they have no MIDI job (PLAY has one out of the box, see
+Button MIDI). Use it to send the same phrase to two apps and compare, or as a
+scratch looper for an external device.
 
 ### MIDI reference
 
@@ -195,8 +218,9 @@ this device uses. SELECT scrolls.
 ![Clock master page](ui-examples/25-clock-master.png)
 
 The FM-1 sends MIDI clock at a set tempo, 20 to 300 bpm, to USB, Bluetooth or both,
-with Start when it runs and Stop when it stops. PLAY toggles it on this page. Timing
-comes from the bridge's main loop, so expect a jitter of a couple of milliseconds;
+with Start when it runs and Stop when it stops. OCT+ on the *Clock* row starts and
+stops it; so does PLAY, once PLAY has no MIDI job. Timing comes from the bridge's main
+loop, which wakes on a 10 ms tick when idle, so expect a jitter of up to about 10 ms;
 good enough to drive an arpeggiator or a drum app, not a reference clock.
 
 ### Keyboard
@@ -207,7 +231,8 @@ good enough to drive an arpeggiator or a drum app, not a reference clock.
   shift the octave from any row. SAVE leaves, since OCT- is taken.
 - *Keys send MIDI*: the 27 keys play notes (F3 to G5 at octave 0). Off silences them;
   keys and buttons with a MIDI job keep working.
-- *Channel*, *Octave* (-3 to +3), *Velocity*.
+- *Channel*, *Octave* (-3 to +3), *Velocity* (10 to 127 in steps of 10 here; the web
+  editor sets any value from 1).
 - *Velocity source*: fixed, or the MASTER pot, which then sets the velocity of every
   note, 1 to 127 across its travel.
 - *Program* and *Bank*: the PRESETS encoder sends program changes, ALGORITHM sends
@@ -234,7 +259,8 @@ key, to pick it. A key with a job no longer plays its note.
 
 ![Scan devices page](ui-examples/07-scan.png)
 - *State*: advertising, connected, or the host mode state.
-- *Pairable*: whether the FM-1 advertises. Off hides it from phones.
+- *Pairable*: whether the FM-1 advertises. Off hides it from phones, also after a
+  disconnect. Not saved: after a reboot the FM-1 is always findable again.
 - *Link*: *low latency* asks for a 7.5 ms connection (Android) or 15 ms (Apple),
   *power saving* asks for 30 to 50 ms and lets the FM-1 skip events when idle. Power
   saving does not delay what the FM-1 sends, only what it receives. Hold GLO anywhere
@@ -276,8 +302,9 @@ other's release, and a repeated note on retriggers cleanly instead of stacking.
 ![A preset's page](ui-examples/28-preset-slot.png)
 
 Four slots, each a snapshot of every setting (the Bluetooth pairings excepted). A
-used slot's row says what it holds: how many of the six routes are on, the keyboard
-channel, "host" and "eco" when set. OCT+ on a used slot loads it, on an empty slot
+used slot's row shows its name, or, without one, what it holds: how many of the six
+routes are on, the keyboard channel, "host" and "eco" when set. Names (up to 12
+characters) are set in the web editor's Presets card. OCT+ on a used slot loads it, on an empty slot
 saves into it, after a confirmation. Hold OCT+ for the slot's own page: load, save
 here, clear.
 
@@ -298,16 +325,19 @@ Firmware identity, version and build date, the battery (the cell voltage, estima
 uptime, counters per port, input event drops, the boot count, why the chip last
 reset (power on, software, watchdog, ...) and how many watchdog resets and bridge
 stalls it has seen. If "Crashes" ever climbs, that is the first thing to report; the
-row turns orange. *Reboot*. *USB recovery mode* restarts into the chip's USB download
-mode, for M-VAVE's updater or a recovery tool. *Reset settings*. *Input test* shows
-what the key scanner sees.
+row turns orange; *Reset crash counters* sets them back to zero. *Reboot*. *USB recovery
+mode* restarts into the chip's USB download mode (a USB disk, for `tools/fm1_flash.sh`;
+the SysEx soft key that does the same is verified, this row not yet). *Reset settings*.
+*Input test* shows what the key scanner sees; HOME leaves it.
 
 ## Web editor
 
-The screenshots above are renderings of the panel at twice its size; the real panel is 240 by 240 pixels.
-Open `web/editor.html` from a local web server in Chrome or Edge, connect the FM-1 by
-USB, click Connect. Every setting above is on one page, including channel sets, all
-27 key jobs and the presets, and the page shows every MIDI message the FM-1 sends.
+Open `web/editor.html` from a local web server in Chrome or Edge (`docs/web-editor.md`),
+connect the FM-1 by USB, click Connect. The settings are on one page, including channel
+sets, all 27 key jobs, the presets and their names, and the page shows every MIDI
+message the FM-1 sends. Two things stay on the panel only, the MIDI log's filters and
+the Composer's favourites; the transpose and velocity curve of the FM-1's own keys are
+in the editor only.
 It also exports and imports the settings as a file, and installs a firmware package
 over USB, the same way the command-line installer does. The Device card shows uptime,
 free memory, task stack margins and the reset history, and the Device log card reads
@@ -315,10 +345,17 @@ the firmware's own log (boot, reset reason, update steps, Bluetooth connections)
 only console the FM-1 has. See `docs/web-editor.md`.
 
 ## Updating and going back
-Updates install over USB MIDI with the installer in `tools/install.sh`, the same way
-M-VAVE's updater works. To return to the original firmware, run M-VAVE's updater
-with the official package; the bridge answers its handshake like the stock firmware
-does. Keep the official package on your computer.
+Updates install over USB MIDI, the same way M-VAVE's updater works: the web editor's
+Firmware card, or from a terminal Felucca's installer (`tools/install.sh PACKAGE.fwsc`,
+or `tools/fm1_safe_install.sh`, which takes a backup first). `docs/install.md` has
+the steps.
+
+To return to the original firmware, install M-VAVE's official `FM-1.fwsc` (V15) with
+Felucca's installer: `tools/install.sh FM-1.fwsc` (verified on the first unit,
+2026-10-19). The "Return to official V15" button of Felucca's web installer speaks the
+same protocol, but has not been tried on the bridge. M-VAVE's
+own updater (M-UPGRADE) has not been tried on the bridge: the bridge's USB ids are
+not stock's, so it may not find the FM-1. Keep the official package on your computer.
 
 The first firmware to put on a new unit is the minimal build (`FM-1_930`): the
 same updater and USB MIDI, a status screen, nothing else. It proves the install path
@@ -328,10 +365,10 @@ uptime, refreshed once a second.
 
 ![Minimal build status screen](ui-examples/26-minimal.png)
 
-If the device ever stops answering, the System page's *USB recovery mode*, the
-`tools/fm1_recover.py` script or, if the screen is dead, a USB recovery dongle,
-brings the chip into its download mode, where `tools/fm1_flash.sh` restores a flash
-dump. `docs/recovery.md` has the whole ladder and what to prepare beforehand.
+If the device ever stops answering, the `tools/fm1_recover.py` script (or the System
+page's *USB recovery mode*) or, if it never shows on USB, a USB recovery dongle, brings
+the chip into its download mode, where `tools/fm1_flash.sh restore-app` puts back the
+app area of a flash dump. `docs/recovery.md` has the whole ladder and what to prepare beforehand.
 
 ## Settings
 Settings are stored a second after a change and survive power cycles. Resetting
@@ -344,3 +381,7 @@ outside presets.
 - Keys have no velocity sensing; the keyboard sends the velocity set on its page.
 - Latency: USB a few milliseconds, Bluetooth about 10 to 25 ms depending on the
   connection interval the other side grants.
+- Tested on one unit. The key matrix tables come from that unit and earlier
+  firmwares; a different production batch may wire some keys differently (the System
+  page's *Input test* shows what the scanner sees).
+- iOS and macOS are untested; so is M-VAVE's updater on top of the bridge.

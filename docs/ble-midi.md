@@ -14,8 +14,9 @@ version 1.0, 2015. Apple's "Bluetooth Low Energy MIDI Specification" is the same
 - Connection interval: request the smallest the central allows (Apple: 15 ms is
   what macOS/iOS grant; 7.5 ms via the central if it agrees). MTU: negotiate larger
   than 23 to fit chords; many centrals give 100+.
-- Security: iOS requires pairing/bonding for MIDI apps to see the device; use
-  "just works" with bonding so reconnects are silent.
+- Security: the bridge does not ask the central to pair (asking made an Android MIDI app
+  that never pairs lose the link, `CHANGELOG.md`); it bonds with Just Works when the central
+  asks. Apple's Bluetooth MIDI panel is said to pair on its own; **untested on iOS/macOS**.
 
 ## Packet format
 

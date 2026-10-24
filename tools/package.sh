@@ -11,10 +11,14 @@
 #   tools/package.sh [IDENTITY]       default identity FM-1_931 (FM-1_9xx: custom firmware)
 #   tools/package.sh --minimal        build/minimal/app.bin -> build/fm1bridge-minimal.fwsc, identity FM-1_930
 #
-# Env: FELUCCA (default ../../Felucca), AC79_SDK (default ~/fw-AC79_AIoT_SDK)
+# Env: FELUCCA (default: next to this clone, or one level up), AC79_SDK (default ~/fw-AC79_AIoT_SDK)
 set -e
 here=$(cd "$(dirname "$0")/.." && pwd)
-FELUCCA=${FELUCCA:-$here/../../Felucca}
+sibling() {   # $1 checked out next to this clone, or one level further up; the first that exists
+    for d in "$here/.." "$here/../.."; do [ -d "$d/$1" ] && { (cd "$d/$1" && pwd); return; }; done
+    echo "$here/../$1"
+}
+FELUCCA=${FELUCCA:-$(sibling Felucca)}
 export AC79_SDK=${AC79_SDK:-$HOME/fw-AC79_AIoT_SDK}
 if [ "$1" = "--minimal" ]; then
     shift; ident=${1:-FM-1_930}; app=$here/build/minimal/app.bin; out=$here/build/fm1bridge-minimal.fwsc; hint="make -C app MINIMAL=1"

@@ -1,5 +1,10 @@
 # Plan
 
+The working log of the project, in the order things were decided. Entries keep the status
+they had when written unless marked otherwise; what is verified on the hardware is in
+`CHANGELOG.md` and `recovery.md`, and the open items are collected under "Open" at the end of
+"Verify on hardware (UI)" below.
+
 ## Milestones
 
 0. **Research on the SDK tree (no hardware needed).** Answer the questions below and
@@ -73,7 +78,8 @@
   bonding on. API: `ble_midi_send`, `ble_midi_set_rx`, `ble_midi_ready`.
 - `app/usb/usb_midi.c`: USB-MIDI class on the SDK USB stack, started on plug-in by
   the SDK's OTG detection (`task_pc.c`, `USB_PC_NO_APP_MODE`).
-- `app/bridge.c`: the bridge task. UART1 on PH8 (SDK uart device "uart1", 31250)
+- `app/bridge.c`: the bridge task. UART1 on PH8 (then the SDK uart device "uart1"; register
+  level in `app/trs_uart.c` since 2026-10-19, 31250)
   -> parser; USB and BLE input queued from their contexts; router fan-out; BLE
   packets batched per burst; update-protocol SysEx intercepted and handed to
   `fm1_update`.
@@ -82,14 +88,15 @@
   confirmation, UPDATA_PARM at 0xE4F00 + RAM, reset) and the soft key to the
   mask-ROM USB mode. `tests/test_update.c` runs a whole session against the real
   `build/fm1bridge.fwsc` with a simulated installer and flash.
-- `app/ui/lcd.c` + `midilog.c`: the panel (SDK SPI device "spi1" on port C, D/C on
+- `app/ui/lcd.c` + `midilog.c`: the panel (then the SDK SPI device "spi1", register level since
+  2026-10-19; port C, D/C on
   PC8 as GPIO, backlight PA2) and a logger screen: status line (USB, BLE, enabled
   routes) and the last 16 messages from any port, drawn at most 20 times a second
   from the bridge task. Every message the router sees is logged (first SysEx chunk
   only). The 8x14 font is generated from DejaVu Sans Mono.
-- `app.bin` 310 KB of 581 KB; `tools/package.sh` -> `build/fm1bridge.fwsc`.
+- `app.bin` 310 KB of 581 KB then (363 KB on 2026-10-24, README); `tools/package.sh` -> `build/fm1bridge.fwsc`.
 
-## UI (milestone 6, built 2026-10-11, untested on hardware)
+## UI (milestone 6, built 2026-10-11; on the unit since 2026-10-19)
 
 - `app/input/`: own matrix scanner. TIMER3 at 10 kHz (`-DMX_TICK_US` overrides), one
   column per tick, rows read the tick after latching, 1.1 ms frames; debounce 8 frames;
@@ -217,7 +224,7 @@
 ### Verify on hardware (UI)
 - **Verified 2026-10-20 (the user):** encoder direction and acceleration, the 700 ms holds,
   the backlight timeout and the wake-up press, the Perform page's big font at a metre.
-- Splash then the Status page; HOME opens the menu; SELECT scrolls, clockwise =
+- **Verified 2026-10-20 (the user, every page by hand):** splash then the Status page; HOME opens the menu; SELECT scrolls, clockwise =
   down (if it is up, the encoder sign in `matrix.c` `qtab` is the other way round on
   real parts); OCT+/OCT- navigate; HOME returns to the Status page from any page.
 - Battery: until 2026-10-20 PB1 was never set up as an ADC input and read 0.00 V. Now Felucca's
@@ -226,15 +233,15 @@
   4.07 V cell.
   No meter here: the cell voltage and where orange "low" falls against the SDK's own cut-off
   stay unchecked (dropped for now, 2026-10-20, the user's call).
-- Encoder acceleration feel: a deliberate turn should step by 1, a quick one by 3, a
+- (Verified, above.) Encoder acceleration feel: a deliberate turn should step by 1, a quick one by 3, a
   flick by 10 (the gaps are measured by the UI task, `accelerate()`); retune the 40 and
   100 ms thresholds if real detents land differently.
-- Hold timing: 700 ms (`MX_HOLD_FRAMES`) for hold OCT+, hold HOME, hold GLO, hold
+- (Verified, above.) Hold timing: 700 ms (`MX_HOLD_FRAMES`) for hold OCT+, hold HOME, hold GLO, hold
   OCT-/+ on the Keyboard page; the release after a hold does nothing.
 - With the backlight off, a note key, a mapped button and a knob on the Keyboard page
   send their MIDI and light the panel; a menu button only lights the panel. **Verified
   2026-10-20 (the user).**
-- The Perform page's big font on the real panel: legibility at a metre, the 16 px
+- (Verified, above.) The Perform page's big font on the real panel: legibility at a metre, the 16 px
   strip under the eighth row holds the footer.
 - The 10 kHz TIMER3 ISR does not disturb TRS MIDI, USB or BLE (log page still shows a
   TRS keyboard while scrolling menus). If TIMER3 is taken, use TIMER2 (`matrix_port.c`).
@@ -250,10 +257,11 @@
   (column,row), the decoded button, the encoder counts and learned rest states. Press
   every button and turn every encoder; fix the tables for any mismatch (batches differ).
 - Debug console: the UART2 TX pin is -1 (nothing driven) until PC3 is confirmed free.
-- Routes and filters survive a reboot; backlight times out and any key wakes it.
-- Panic silences a stuck note on USB and BLE.
-- USB page follows plug/unplug; "USB MIDI off" stops enumeration.
-- Forget bonds forces a phone to re-pair.
+- Routes and filters survive a reboot; backlight times out and any key wakes it. **Verified
+  2026-10-20** (`CHANGELOG.md`).
+- Panic silences a stuck note on USB and BLE. **Verified 2026-10-20** (2080 messages to each).
+- USB page follows plug/unplug; "USB MIDI off" stops enumeration. **Verified 2026-10-20.**
+- Forget bonds forces a phone to re-pair. **Verified 2026-10-20** (the PC as the phone).
 - Host mode: **verified 2026-10-19** against a BLE MIDI peripheral made of the PC's Bluetooth
   adapter (`tools/ble_midi_peripheral.py`, BlueZ): the scan lists it, it connects (7.5 ms,
   MTU 200), discovery finds the MIDI characteristic, the subscription brings its notes to USB,
@@ -278,17 +286,21 @@
 - PC8 reclaimed as D/C after the SPI driver opened port C; panel init at 12 MHz.
 - The SDK log hook: yes, the vendor libraries' output lands in the device log through
   `log_putbyte()` (`[Info]: [VM]...`, `[LL_E]...`, `PAIR_PROCESS` lines, seen 2026-10-20).
-- Stack margins in the Device card after an hour of traffic (bridge and UI tasks).
-- USB strings: does M-UPGRADE still find the device as "FM-1"? Stock VID/PID.
-- `tools/fm1_recover.py`: the soft key on stock and on ours (both verified), the vendor request on
-  ours; the UBOOT disk's SCSI vendor/model strings; jl-uboot-tool on WL82 (listed
-  as untested there) and the loader it needs.
+- Stack margins in the Device card after an hour of traffic (bridge and UI tasks). **Verified
+  2026-10-20**: a 55-minute soak, margins and counters unchanged.
+- `tools/fm1_recover.py`: the soft key on stock and on ours, the UBOOT disk's SCSI strings
+  (`WL82 UBOOT1.00`, USB 4c4a:8057), jl-uboot-tool on WL82: **all verified 2026-10-19/20**.
+- **Open:** the SDK vendor request (`fm1_recover.py --vendor`) and the System page's *USB
+  recovery mode*; M-UPGRADE on top of the bridge (USB strings "FM-1", but JieLi's 3654:4155,
+  not stock's 4c4a:c755); the Pairable change of 2026-10-24 (off survives a disconnect); iOS
+  and macOS; another unit's key matrix.
 
 ## First-boot checklist (when an FM-1 is here)
 
-No stock round trip is needed between our own installs: our package carries
-Felucca's loader, which writes the app area (including the region descriptors) and
-never the head. Stock v15 is the recovery path, not a prerequisite.
+(Written before the unit came; walked 2026-10-19, `recovery.md`.) No stock round trip is
+needed between our own installs: our package carries Felucca's loader, which writes the app
+area (including the region descriptors) and never the head. Stock V15 is the recovery path,
+not a prerequisite; step 5's stock install only proves that path once.
 
 0. Build the D+/D- dongle (ip2k's `dongle/`), clone jl-uboot-tool, and take a full
    1 MB dump of the untouched unit: `tools/fm1_recover.py`, `tools/fm1_flash.sh dump`.
@@ -298,8 +310,8 @@ never the head. Stock v15 is the recovery path, not a prerequisite.
    Note the USB VID/PID and product string of stock (`lsusb -v`) for `app/usb/descriptor.c`.
 2. Back up: keep the stock `FM-1.fwsc`; confirm M-UPGRADE can reinstall it once.
 3. Install `fm1bridge-minimal.fwsc` first (identity FM-1_930: no radio, no keys, no UI
-   task). Expected: the installer's step 1 is served by our app (17 read requests),
-   the loader appears as `ota-FM-1_015`, step 2 writes.
+   task). Expected: the installer's step 1 is served by our app (21 read requests on the
+   unit), the loader appears as `ota-FM-1_900` (Felucca's), step 2 writes.
 4. On boot: the status screen; USB enumerates as "FM-1" MIDI; `tools/install.sh --info`
    gets `FM-1_930`; the web editor connects, the Device log card shows the boot lines
    (and whether SDK printf output reaches the ring through `log_putbyte`), the Device
@@ -313,25 +325,24 @@ never the head. Stock v15 is the recovery path, not a prerequisite.
    check that the SDK SPI driver left PC8 usable as the D/C output (we reclaim it
    after `dev_open("spi1")`), and the 12 MHz clock.
 
-## Before sharing (future work, 2026-10-20)
+## Before sharing (2026-10-20; status 2026-10-24)
 
-Asked whether the bridge is ready for a post on the FM-1 subreddit: not as a "install this"
-post, maybe as an alpha call for testers once these are done. The tree is committed and
-licensed (`LICENSE`); the rest:
+Asked whether the bridge is ready for a post on the FM-1 subreddit: not as an "install this"
+post, but as an alpha call for testers once these are done.
 
-- **Publish.** No git remote yet: push to a public repository, attach a release `.fwsc`
-  with its hash and a three-line install, since a build needs the full SDK checkout, the
-  JieLi toolchain and a Felucca tree built next door.
-- **M-UPGRADE back to stock, verify on hardware.** `docs/manual.md` says M-VAVE's own updater
-  puts stock back at any time; only Felucca's installer has done so on the unit. The bridge
-  keeps JieLi's USB ids (3654:4155, stock is 4c4a:c755) and M-UPGRADE may look for stock's
-  (the VID/PID item below). Test it, or copy the ids, or change the sentence.
-- **More days on the unit** with a phone, a BLE keyboard, and a TRS sender with its clock on
-  (the retry below is untested); read the boot log after the next USB-silent episode.
-- **README status line**: brought up to date 2026-10-21 (what is verified on the unit, what is not).
-- **The post itself**: alpha, one unit, one day of hardware time, a soft-lock needed the mask
-  ROM dongle once; bring a dongle and read `docs/recovery.md` first. The key matrix tables may
-  differ by batch.
+- **Publish.** Public at github.com/ForrestPanda/fm1-midi-bridge. A release `v0.2.0` with both
+  `.fwsc` packages, their SHA-256 and the GPL source offer for Felucca's loader (a pinned
+  Felucca commit), and `docs/install.md` as the short install. The packages need no build.
+- **Going back to stock.** Felucca's installer with M-VAVE's `FM-1.fwsc`, verified 2026-10-19;
+  the docs now say that, and that M-UPGRADE is untested on the bridge (its USB ids are not
+  stock's). Still worth one try with M-UPGRADE.
+- **More days on the unit**: done 2026-10-19..24 (Android phone, a BLE keyboard through the
+  WU-BT10, the TRS tester with a clock, a 55-minute soak; the USB-silent episodes did not
+  return). Not done: iOS, macOS, a second unit.
+- **Docs review** (2026-10-24): the manual, recovery, install and protocol docs checked against
+  the code and the scripts; the screenshots regenerated from the current pages.
+- **The post itself**: alpha, one unit, five days on hardware, a soft-lock needed the mask ROM
+  dongle once; take a dump first and read `docs/install.md`. The key matrix may differ by batch.
 
 ## MIDI log filters (asked 2026-10-20, built the same day)
 
@@ -427,8 +438,8 @@ read 0 V), its thresholds Felucca's, no meter to check them. Left for later (the
   panel; nothing documents PC3, PC4, PC5) and there is no schematic, so "free" cannot
   be shown from the trees. The board file keeps `tx_pin = -1`; the device log over
   SysEx is the console. Only worth revisiting if a boot never reaches USB.
-- jl-uboot-tool on the WL82 family (listed untested upstream), the soft key and the
-  SDK vendor request on stock: `docs/recovery.md`.
+- jl-uboot-tool on the WL82 family and the soft key on stock: verified 2026-10-19
+  (`docs/recovery.md`); the SDK vendor request is still open.
 - **fm1-emu runs this firmware (2026-10-14)**, full and minimal builds, with the BLE
   stack on (`BLE:adv`): splash, menu, encoder, keys, TRS in, routing to USB and BLE.
   It took nine fixes to the emulator, on branch `ac79-sdk-firmware` of `../fm1-emu`
@@ -520,8 +531,9 @@ read 0 V), its thresholds Felucca's, no meter to check them. Left for later (the
 
 - Stock BLE name and whether stock already bridges TRS -> BLE (if it does, part of
   this project is moot and the value is USB <-> BLE and host mode).
-- Chip key: read the identity, compare with Felucca's assumed 0x980F.
+- Chip key: read the identity, compare with Felucca's assumed 0x980F. **Answered:** 0x980F on
+  the first unit (`hardware.md`).
 - The 26-GPIO bond-out (no free pin, PC3 absent): `hardware.md`, "Adding a MIDI OUT".
   The MIDI OUT mod itself is not pursued (decided 2026-10-14: too invasive); the section
   stays as the record of what it would take.
-- TRS jack wiring (Type A vs Type B) for the adapter cable.
+- TRS jack wiring (Type A vs Type B) for the adapter cable. **Answered:** Type A (`hardware.md`).

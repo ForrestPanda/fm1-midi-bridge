@@ -36,7 +36,7 @@
   <button id="read" disabled>Read from device</button>
   <button id="write" disabled>Write to device</button>
   <button id="refresh" disabled>Status</button>
-  <span id="status">Web MIDI needs Chrome or Edge, and the page served from localhost or a file.</span>
+  <span id="status">Web MIDI needs Chrome or Edge, and the page served over https or from localhost (docs/web-editor.md).</span>
 </div>
 <div class="grid">
   <div class="card"><h2>Routes</h2><div id="routes"></div></div>
@@ -67,7 +67,7 @@
   <div class="card"><h2>Clock master</h2>
     <label>Tempo (bpm) <input type="number" id="clock_bpm" min="20" max="300"></label>
     <label>Send to <select id="clock_to"><option value="1">USB</option><option value="2">BLE</option><option value="3">USB + BLE</option></select></label>
-    <div class="dim">Start and stop from the Clock page on the device (PLAY).</div>
+    <div class="dim">Start and stop on the Clock master page on the device: OK on the Clock row, or PLAY when PLAY has no MIDI job (Button MIDI card).</div>
   </div>
   <div class="card"><h2>Presets</h2><div id="presets"></div><div class="dim">Load applies at once. Save stores the settings as they are on the device, so write first. A name (12 characters, plain ASCII) is stored when you leave the box and shows on the FM-1's Presets page; clear drops it.</div></div>
   <div class="card"><h2>Bluetooth</h2>
@@ -78,7 +78,7 @@
   </div>
   <div class="card"><h2>USB and display</h2>
     <label>USB MIDI <input type="checkbox" id="usb_enabled"></label>
-    <label>Backlight off after <select id="backlight"><option value="0">never</option><option value="1">10 s</option><option value="2">30 s</option><option value="3">1 min</option><option value="4">5 min</option></select></label>
+    <label>Screen off after <select id="backlight"><option value="0">never</option><option value="1">10 s</option><option value="2">30 s</option><option value="3">1 min</option><option value="4">5 min</option></select></label>
     <label>Invert colours <input type="checkbox" id="invert"></label>
   </div>
   <div class="card"><h2>Backup</h2>
@@ -99,7 +99,7 @@
   <div class="card"><h2>Send MIDI</h2>
     <label>Bytes (hex) <input type="text" id="tx" value="90 3C 64" style="width:160px;background:#222;color:#eee;border:1px solid #333;border-radius:3px;padding:2px 4px"></label>
     <label>To <select id="txport"><option value="1">USB</option><option value="2">BLE</option><option value="3">USB + BLE</option></select></label>
-    <label><span class="dim">Status bytes allowed; SysEx too.</span> <button id="txsend" disabled>Send</button></label>
+    <label><span class="dim">Status bytes allowed; SysEx too, up to 128 bytes in all.</span> <button id="txsend" disabled>Send</button></label>
     <div class="dim">Quick: <a href="#" data-tx="90 3C 64">note on</a> · <a href="#" data-tx="80 3C 00">note off</a> · <a href="#" data-tx="B0 07 7F">volume</a> · <a href="#" data-tx="C0 05">program 6</a> · <a href="#" data-tx="F0 7E 7F 06 01 F7">device inquiry</a> · <a href="#" data-tx="FA">start</a> · <a href="#" data-tx="FC">stop</a></div>
   </div>
   <div class="card" style="grid-column: 1 / -1"><h2>MIDI from the device</h2><div id="log"></div></div>

@@ -104,7 +104,8 @@ and optional SDRAM; the FM-1 has 1 MB and 512 KB RAM, so `__FLASH_SIZE__` must b
   `hid_itf_hander`, `hid_intrtx` / `hid_intrrx`, `hid_tx_data`, `hid_register`).
   A MIDI class is one AudioControl interface (empty) + one MIDIStreaming interface
   with one bulk IN and one bulk OUT endpoint, 4-byte event packets.
-- Default VID 0x3654 (JieLi). The stock FM-1 VID/PID are unknown until we have one.
+- Default VID 0x3654 (JieLi); the bridge keeps it (3654:4155). Stock V15 is 4c4a:c755
+  (`hardware.md`).
 
 ## UART (TRS MIDI IN)
 

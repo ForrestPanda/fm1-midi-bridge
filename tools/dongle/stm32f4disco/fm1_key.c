@@ -2,24 +2,21 @@
 /* The AC791N's USB key from an STM32F4-Discovery (STM32F407, 16 MHz HSI, bare metal, no libc).
  * Sends the 16-bit key 0x16EF MSB first on the FM-1's USB data lines: D+ (green) the clock on
  * PD0, D- (white) the data on PD1, GND to GND, nothing on VBUS (the FM-1 runs on its battery).
- * Timing and sequence after ip2k's dongle spec (docs/10-usb-key-dongle.md) and kurogedelic's
+ * Bit timing after ip2k's dongle spec (docs/10-usb-key-dongle.md) and kurogedelic's
  * FM-1-transporter (both: D+ clock, "polarity A"): per bit the clock low 8 us, data set 3 us
- * after the falling edge, clock high 12 us (the ROM latches on the rising edge, ~50 kHz);
- * after each 16-bit packet 160 us with both lines released, watching for the acknowledge
- * (the chip pulls both lines low for 1-2 ms). After the acknowledge the chip pulls D+ up and
- * wants falling edges every 1 ms to calibrate its clock: 4 us low pulses on D+ until D+ stays
- * low 3 ms (the host's reset, or the ROM's "calibration finished") or 2 min; all four LEDs
- * while they run: connect the computer then. On the first unit (2026-10-19) a swap of the cable
- * after the pulses had stopped lost the ROM (it boots flash when the pulses end without a host,
- * as FM-1-transporter's notes say), so the pulses now run until the host takes over, and the
- * computer is best wired in parallel from the start (the cut cable's two halves joined again,
- * the Discovery tapped on D+, D- and GND): a host port ignores the key, sees D+ high once the
- * ROM pulls it up, and its bus reset is what ends the pulses. After that the lines stay released
- * for good (blue LED blinking); the board's reset button starts over. If no acknowledge shows in
- * 5 s of keying, 2 s of blind 1 kHz pulses (czietz's way) and a pause, then again.
+ * after the falling edge, clock high 12 us (the ROM latches on the rising edge, ~50 kHz).
+ * The sequence is czietz's, blind, in a loop (main() says why no acknowledge is looked for):
+ * 1.5 s of key packets (green LED), 2 s of a 1 kHz square wave on D+ (all four LEDs), then 4 s
+ * with the lines released (blue). If D+ stays high all through the released time (a live bus)
+ * the board stops for good, blue blinking; otherwise the next round starts.
+ * Verified on the first unit (2026-10-19, docs/recovery.md): the board keying, the FM-1 switched
+ * on; when the LEDs go from all four to blue, unplug the board and plug the FM-1 into the computer
+ * right away: the ROM shows as USB disk 4c4a:8057 (on the second power-on there). A swap long after
+ * the wave lost the ROM (it boots flash without a host): if no disk shows, power the FM-1 off, plug
+ * the board back and try again. The board's reset button starts it over.
  * Lines are driven push-pull at 3.3 V as FM-1-transporter does, released = input.
- * LEDs: green keying, orange acknowledge seen, all four pulses (connect the computer), blue
- * blinking quiet. 100 ohm in series with D+ and D- are a good idea with the computer tapped in. */
+ * gap_ack() and sof() are the acknowledge-watching variant, kept unused: without pull-ups the
+ * acknowledge cannot be told from an idle bus. */
 #include <stdint.h>
 
 #define REG(a) (*(volatile uint32_t *)(a))

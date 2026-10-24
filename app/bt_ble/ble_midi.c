@@ -136,6 +136,9 @@ static u8 test_data_start;
 #define HOLD_LATENCY_CNT_ALL  (0xffff)
 
 static volatile hci_con_handle_t con_handle;
+/* the Bluetooth page's Pairable: off keeps the advertising off after a disconnect too; not saved,
+ * so a reboot always makes the FM-1 findable again */
+static u8 pairable = 1;
 
 //加密设置
 /* static const uint8_t sm_min_key_size = 7; */
@@ -568,7 +571,7 @@ static void cbk_packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *p
 
             {
                 extern int ble_host_active(void);
-                if (!ble_update_get_ready_jump_flag() && !ble_host_active()) {
+                if (!ble_update_get_ready_jump_flag() && !ble_host_active() && pairable) {
                     os_mutex_pend(&mutex, 0);
                     bt_ble_adv_enable(1);
                     os_mutex_post(&mutex);
@@ -1217,6 +1220,9 @@ void bt_ble_adv_enable(u8 enable)
     set_adv_enable(0, enable);
 }
 
+void ble_midi_set_pairable(u8 on) { pairable = on ? 1 : 0; bt_ble_adv_enable(pairable); }
+int ble_midi_pairable(void) { return pairable; }
+
 u16 bt_ble_is_connected(void)
 {
     return con_handle;
@@ -1235,7 +1241,7 @@ static void ble_module_enable(u8 en)
             le_l2cap_register_packet_handler(&cbk_packet_handler);
         }
         adv_ctrl_en = 1;
-        bt_ble_adv_enable(1);
+        bt_ble_adv_enable(pairable);
     } else {
         if (con_handle) {
             adv_ctrl_en = 0;

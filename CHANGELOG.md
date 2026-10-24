@@ -1,6 +1,27 @@
 # Changelog
 
-## Unreleased
+## v0.2.0 (2026-10-24): first public alpha
+
+Packages: `fm1bridge.fwsc` (`FM-1_931`) and `fm1bridge-minimal.fwsc` (`FM-1_930`), with
+Felucca v1.6's update loader. Install: `docs/install.md`.
+
+- Pairable off (Bluetooth page) now keeps the FM-1 hidden after a disconnect too; it used to
+  advertise again at the next disconnect while the row still read "off". Still not saved: a
+  reboot makes it findable again. **Verify on the unit.**
+- The Clock master page's hint and the web editor say how to start the clock: OK on the Clock
+  row, or PLAY once PLAY has no MIDI job (it sends CC 64 out of the box).
+- Version 0.2.0 (splash, System page, editor INFO).
+- Tools: `fm1_flash.sh restore-app DUMP` writes only the app area of a dump back (the recovery
+  that worked on the first unit, by hand then); `fm1_recover.py` takes only the JieLi ROM disk
+  (USB 4c4a:8057, or a WL8x UBOOT model), never another USB disk; `install.sh` takes a package
+  (`install.sh FM-1.fwsc` goes back to stock); the scripts find Felucca and jl-uboot-tool next
+  to the clone or one level up; `fm1_safe_install.sh` uses Felucca's installer by default.
+- Docs: `docs/install.md`; the manual's Connecting section, the way back to stock as verified
+  (Felucca's installer; M-UPGRADE untested), corrected PLAY, Recorder, clock jitter and Pairable
+  text; recovery's ladder with `restore-app` and the loader's real identity (`ota-FM-1_900`);
+  the editor protocol table complete; screenshots regenerated from the current pages.
+
+Earlier, since v0.1.0 (in the order written; a later entry supersedes an earlier "verify"):
 
 - Screen off turns the backlight off too, not just the panel: the matrix scan holds PA2 (backlight
   and the 595s' /OE) low only for the few microseconds of each read, so the backlight and the button
@@ -89,8 +110,7 @@
 - Host mode, a stale bond: the FM-1 asked for encryption with keys the PC no longer had (status
   06), the discovery started at connect never finished, and the link was dropped after 15 s,
   every attempt. Now that peer's bond is deleted and the FM-1 connects to it again
-  (`unbond_retry`). **Verify on hardware:** the PC re-keyed on its own when it was told to forget
-  the FM-1, so the 06 path itself has not run since; a keyboard reset to factory would show it.
+  (`unbond_retry`). (Seen working 2026-10-20 night, the entry above.)
 - `tools/ble_midi_peripheral.py`: a PropertiesChanged without the invalidated list no longer
   throws in the handler.
 - TRS MIDI IN tested on the first unit (2026-10-20) with `tools/trs_tester/`, an STM32F4-Discovery
@@ -173,9 +193,8 @@
   next one fills behind it, so batching adapts to the link; only a packet refused for 250 ms
   is dropped, counted in the Status page's dropped figure (`bridge_ble_drops`). Before, the
   refused packet was lost with its notes. Why: TRS to BLE worked on the first unit only with
-  the sending device's MIDI clock off (2026-10-19). **Future work, verify on hardware:** TRS to
-  BLE with the clock on; if notes still suffer, batch clock-only packets to the connection
-  interval, or default the TRS to BLE route's clock option off.
+  the sending device's MIDI clock off (2026-10-19). (Verified 2026-10-20: TRS to BLE with a clock
+  on, the TRS tester's suite, no loss.)
 - Screen-off is the panel's sleep (DISPOFF/SLPIN; SLPOUT, 120 ms, DISPON to wake), PA2 is left
   low: PA2 is also the key matrix 595s' /OE, so with the "backlight" off no button, key or knob
   read and nothing could wake the screen (found on the first unit 2026-10-19, as Felucca had on
@@ -185,9 +204,10 @@
   on the shift registers (all LEDs lit under it), the UI's event count and screen flag;
   `fm1_editor.py matrix` / `matrix_all`. The log's last 400 bytes are saved to the VM before
   a bridge-stall reset and replayed into the next boot's log (`FM1_STALLLOG_ID`).
-- Open: twice today the unit stayed enumerated on USB but answered no SysEx until a power cycle
-  (once with a bridge stall recorded in the health counters, once without); the saved stall
-  log is there to catch the next one. The USB MIDI switch (USB page) stops the device and is
+- Open then: twice today the unit stayed enumerated on USB but answered no SysEx until a power
+  cycle (once with a bridge stall recorded in the health counters, once without); the saved
+  stall log is there to catch the next one. (Not seen again after the USB write fixes of
+  2026-10-19 evening and 2026-10-20.) The USB MIDI switch (USB page) stops the device and is
   saved: a unit that no longer shows on USB may simply have it off.
 - First install on hardware (2026-10-19, the record in `docs/recovery.md`): minimal build,
   stock back, the full bridge; it boots, advertises "FM-1 MIDI". The panel did not react to the
@@ -210,8 +230,8 @@
 - Identities renamed `FM-1_931` (full) and `FM-1_930` (minimal), from `FM-1_9B1` / `FM-1_9B0`
   (2026-10-19, before the first install): Felucca's and the drummer's installers accept
   `FM-1_` followed by digits only, so the old packages were refused before anything was
-  written, a running `FM-1_9B1` would not have parsed as an FM-1 and the loader's
-  `ota-FM-1_9B1` could not have been resumed. The identity is in `app/update/fm1_update.h`
+  written, and a running `FM-1_9B1` would not have parsed as an FM-1. (The loader in our
+  packages is Felucca's, which always answers `ota-FM-1_900`.) The identity is in `app/update/fm1_update.h`
   (`UPD_IDENTITY`), `app/Makefile` (the minimal build) and `tools/package.sh`.
 - UI pass (2026-10-16), every page walked again in fm1-emu (`tools/ui_walk.py`, 59
   runs): the Status page (ports and routes) is the home page (HOME from anywhere, hold HOME for the

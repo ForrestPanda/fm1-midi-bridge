@@ -4,7 +4,7 @@
  *   F0 7D 'F' 'M' '1' cmd [payload] F7        7D = non-commercial manufacturer id
  *   0x01 info      -> 0x41 + ASCII "identity;version;settings_version;settings_size"
  *   0x02 get       -> 0x42 + pack7(fm1_settings)
- *   0x03 set + pack7(fm1_settings) -> 0x43 + status (0 ok, 1 bad size, 2 bad magic, 3 bad version)
+ *   0x03 set + pack7(fm1_settings) -> 0x43 + status (0 ok, 1 short, 2 bad magic or size, 3 bad version)
  *   0x04 status    -> 0x44 + pack7(editor_status)
  *   0x05 presets   -> 0x45 + one byte per slot (1 = used)
  *   0x06 + slot    save the current settings to the slot      -> 0x46 + status

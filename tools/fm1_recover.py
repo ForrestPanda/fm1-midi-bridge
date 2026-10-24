@@ -27,8 +27,23 @@ PORT_RE = re.compile(r"fm-1|fm1|felucca|composite|usb-midi", re.I)
 JIELI_VID = 0x3654
 
 
+ROM_USB_IDS = {(0x4C4A, 0x8057)}   # the AC791N's mask ROM download disk (first unit, 2026-10-19)
+
+
+def usb_id_of(dev):
+    """(vendor id, product id) of the USB device a SCSI device sits on, or None"""
+    path = os.path.realpath(dev)
+    while path != "/":
+        try:
+            return (int(open(os.path.join(path, "idVendor")).read(), 16),
+                    int(open(os.path.join(path, "idProduct")).read(), 16))
+        except (OSError, ValueError):
+            path = os.path.dirname(path)
+    return None
+
+
 def scsi_devices():
-    """(model, vendor, sg path) for every SCSI device the kernel knows"""
+    """(model, vendor, sg path, USB id) for every SCSI device the kernel knows"""
     out = []
     for dev in glob.glob("/sys/class/scsi_device/*/device"):
         try:
@@ -37,13 +52,15 @@ def scsi_devices():
         except OSError:
             continue
         sg = glob.glob(os.path.join(dev, "scsi_generic", "sg*"))
-        out.append((model, vendor, "/dev/" + os.path.basename(sg[0]) if sg else "?"))
+        out.append((model, vendor, "/dev/" + os.path.basename(sg[0]) if sg else "?", usb_id_of(dev)))
     return out
 
 
 def uboot_device():
-    for model, vendor, sg in scsi_devices():
-        if model.upper().startswith(("UBOOT", "UDISK", "DEVICE")):
+    """the JieLi ROM disk only: its USB id, or a WL8x vendor with a UBOOT model, never just any disk
+    (fm1_safe_install.sh opens the disk found here for writing)"""
+    for model, vendor, sg, usb in scsi_devices():
+        if usb in ROM_USB_IDS or (vendor.upper().startswith(("WL80", "WL82")) and model.upper().startswith("UBOOT")):
             return model, vendor, sg
     return None
 

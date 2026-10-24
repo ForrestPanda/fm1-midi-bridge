@@ -25,9 +25,8 @@ The only update channel is USB-MIDI SysEx. There is no DFU, no debug port.
 
 This is JieLi's standard single-bank "loader" OTA, with the transport swapped from
 USB HID to USB MIDI SysEx. The SDK ships the update framework and loader as part of
-its binary libs; **finding the SDK's hook for a custom transport is the first
-research task** (see plan.md). If that hook exists, our app gets step 1 from vendor
-code and only needs a SysEx-over-USB-MIDI transport shim.
+its binary libs. Our app implements step 1 itself over USB-MIDI SysEx (`app/update/`),
+stages Felucca's loader and resets into it; verified on the first unit (`recovery.md`).
 
 ## Hard rule
 
@@ -47,8 +46,9 @@ the only way back is opening the case / the UBOOT dongle.
 
 ## Installer
 
-Felucca's `tools/fm1_install.py` and web installer speak the whole protocol and
-install any conforming `.fwsc`; use them as-is (GPL tools, not linked). A package
+Felucca's `tools/fm1_install.py` and web installer speak the whole protocol; they install
+packages that carry Felucca's loader (ours do) and the unmodified official V15 `FM-1.fwsc`
+(known by its SHA-256), anything else only with `--force`. Use them as-is (GPL tools, not linked). A package
 built for the official identity (`FM-1_` prefix) is what the stock M-UPGRADE accepts.
 
 ## Software recovery entry (from the SDK, no dongle)
@@ -60,13 +60,15 @@ app) answers a vendor control request on EP0: `GET_STATUS` with `wValue 0xFC`,
 `UPGRADE_USB_SOFT_KEY` in NVRAM and resets, so the mask ROM comes up in USB download
 mode (`UBOOT1.00`). That is the same soft key Felucca implements over SysEx
 (`fm1_enter_uboot`). As long as our app enumerates on USB, a host tool can put the
-FM-1 into recovery without the RP2040 dongle. Verify on hardware before relying on it,
-and keep the dongle route as the fallback for a firmware that never enumerates.
+FM-1 into recovery without a dongle. Not yet verified on hardware (the SysEx soft key
+is); keep the dongle route as the fallback for a firmware that never enumerates.
 
 ## Going back to stock
 
-M-VAVE's own updater (M-UPGRADE) restores the official firmware as long as step 1
-works in whatever is running. Keep the stock `FM-1.fwsc` (v15, 2026-07-30) on disk.
+Felucca's installer restores the official firmware as long as step 1 works in whatever
+is running: `tools/install.sh FM-1.fwsc` (verified from the bridge, 2026-10-19). M-VAVE's
+own updater (M-UPGRADE) should too, but is untested on the bridge, whose USB ids are not
+stock's. Keep the stock `FM-1.fwsc` (V15, 2026-07-30) on disk.
 When step 1 does not work, `docs/recovery.md`: the soft key and the vendor request
 (`tools/fm1_recover.py`) reach the mask ROM from a running firmware, the dongle from
-a dead one, and `tools/fm1_flash.sh` writes a full dump back from there.
+a dead one, and `tools/fm1_flash.sh restore-app` writes the app area of a dump back from there.

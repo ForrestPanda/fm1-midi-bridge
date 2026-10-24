@@ -1,9 +1,11 @@
 # Avoiding a brick, and getting out of one
 
-Walked on the first unit on 2026-10-19 (stock V15 to BackBeat, the drummer): what that unit
-showed is marked **verified**; the rest is what the stock mechanism, Felucca's installer, the SDK
-sources and jl-uboot-tool say. `tools/fm1_safe_install.sh` runs the pre-install steps and the
-install in order (below, "Before the first install").
+Walked on the first unit on 2026-10-19: what that unit showed is marked **verified**; the rest
+is what the stock mechanism, Felucca's installer, the SDK sources and jl-uboot-tool say.
+`tools/fm1_safe_install.sh` runs the pre-install steps and the install in order (below,
+"Before the first install"); `docs/install.md` is the short version. The unit records below
+also mention **BackBeat** ("the drummer", identity `FM-1_900`): the author's other FM-1
+firmware, a SLOOP fork, which went onto the first unit before the bridge.
 
 ## Why the FM-1 is hard to brick
 
@@ -23,23 +25,30 @@ update handshake over USB. Then the only way in is the mask ROM, from the outsid
 The script, from a shell on the computer the FM-1 is plugged into:
 
 ```
-sh tools/fm1_safe_install.sh PACKAGE.fwsc            # steps 1..6 below, a prompt before the power cycle
+sh tools/fm1_safe_install.sh PACKAGE.fwsc            # step 2 below, then the install; a prompt before the power cycle
 sh tools/fm1_safe_install.sh --dump-only             # a backup of the unit, nothing installed
 sh tools/fm1_safe_install.sh PACKAGE.fwsc --no-dump  # this unit has its dump already
 ```
 
-It needs `pip3 install mido python-rtmidi`, kagaimiq's jl-uboot-tool next to `my_fw`'s parent
-(`git clone https://github.com/kagaimiq/jl-uboot-tool ../../jl-uboot-tool` from this tree, then
-`pip3 install --user -r ../../jl-uboot-tool/requirements.txt`; `JLUBOOT=` points elsewhere), and
-your password once: the ROM disk `/dev/sgN` is root-only and the script opens it with `sudo chmod 666`.
-Dumps go to `my_fw/fm1-dumps/` with a `SHA256SUMS` line each; keep a second copy elsewhere, never
-commit them. The steps, and what the first unit did:
+It needs `pip3 install --user mido python-rtmidi`, Felucca's installer and kagaimiq's
+jl-uboot-tool checked out next to this clone (from the clone: `git clone
+https://github.com/hugelton/Felucca ../Felucca`, `git clone https://github.com/kagaimiq/jl-uboot-tool
+../jl-uboot-tool`, `pip3 install --user -r ../jl-uboot-tool/requirements.txt`; the scripts also look
+one level further up, and `FM1_INSTALL=` / `JLUBOOT=` point elsewhere), and your password once: the
+ROM disk `/dev/sgN` is root-only and the script opens it with `sudo chmod 666`. Linux only.
+Dumps go to `fm1-dumps/` next to the clone (outside the repository; `FM1_DUMPS=` elsewhere), with
+a `SHA256SUMS` line each; keep a second copy elsewhere, never commit or share them. The script does
+step 2; the others are yours. The steps, and what the first unit did:
 
-1. **The dongle is optional.** An RP2040 bit-bangs the 16-bit key 0x16EF over D+/D-
-   (D- clock, D+ data) until the chip pulls both low, then hands the bus over.
-   Spec and firmware: ip2k/mvave-fm1-open-firmware (`dongle/`). It covers the one case nothing
-   below does: a firmware that never enumerates. The first unit was flashed without one
-   (none at hand), on the strength of the soft key and the firmware's own rescue paths.
+1. **Have a dongle ready (strongly recommended).** A microcontroller sends the 16-bit key
+   0x16EF on D+/D- (D+ clock, D- data) at power-up, and the chip comes up in its USB download
+   mode. It covers the one case nothing below does: a firmware that never enumerates, which
+   happened to the first unit once (below, "The soft-lock"). Verified: an STM32F4-Discovery,
+   `tools/dongle/stm32f4disco/` (`make flash` needs `arm-none-eabi-gcc` and `openocd`; wiring
+   and use in `fm1_key.c`'s header). Untested: `tools/dongle/fm1_key.py` (any RP2040,
+   MicroPython), kurogedelic's FM-1-transporter (XIAO RP2040), ip2k/mvave-fm1-open-firmware's
+   dongle. The first unit's first installs went on without one (none at hand); a dongle was
+   needed the same evening.
 2. **Take a full dump.** Only a 1 MB dump holds the unit's own data: BTIF, the user
    data, VM. The stock package has none of it. The script: the identity of what runs
    (`fm1_install.py --info`), the soft key (`fm1_recover.py --softkey`), the dump
@@ -64,7 +73,7 @@ commit them. The steps, and what the first unit did:
    blank (the Bluetooth address is not there). The survey tool exits 2 on a data sector in
    0x94000..0xDFFFF and the script then asks before going on.
 3. **Prove the stock path.** `tools/install.sh --info` on the untouched unit, then one
-   reinstall of stock v15 with M-UPGRADE. If this fails on stock, stop here. (Skipped on the
+   reinstall of stock V15 (`tools/install.sh FM-1.fwsc`). If this fails on stock, stop here. (Skipped on the
    first unit: the handshake answered `FM-1_015` and the install from stock went through directly.)
 4. **Charge, and keep the cable in.** Step 2 of an install (the loader rewriting the app
    area) is the only moment a power loss leaves the device without a working app.
@@ -92,7 +101,10 @@ commit them. The steps, and what the first unit did:
   unit was off until a power cycle 25 minutes later brought `FM-1_900` back. **Open:** why the
   loader dropped (an 8 s loader watchdog fed per sector, a USB glitch, the record BackBeat
   writes vs stock's). Retry the reinstall once with nothing else on the bus, and watch.
-  Until then: a loader drop mid-write of a *different* image leaves a half app; a power cycle
+  **2026-10-22:** BackBeat over BackBeat (a newer build, TRS TO USB's BRIDGE ONLY) with `fm1_safe_install.sh
+  --no-dump`, nothing else on the FM-1's port: the loader wrote to 100 %, restarted, `FM-1_900` answered. Not
+  seen again; the cause of the 2026-10-19 drop stays unknown.
+  If it happens mid-write of a *different* image, it leaves a half app; a power cycle
   (not a warm reset) brings the loader back from its flash record, and the install resumes.
 
 ### The bridge on the first unit, later the same day
@@ -185,16 +197,19 @@ every experiment; nothing needed the dongle.
 ## The ladder, cheapest first
 
 ### 1. The firmware runs and enumerates
-Install stock with M-UPGRADE or `tools/install.sh`. Our firmware answers the handshake
-like stock does (`tools/install.sh --info` shows `FM-1_931`, or `FM-1_930` for the
-minimal build). If the device shows as `ota-FM-1_015`, the loader is waiting: run the
-install again, it resumes.
+Install stock with Felucca's installer: `tools/install.sh FM-1.fwsc` (M-VAVE's official V15
+package, SHA-256 `db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a`; the
+installer refuses any other file without `--force`). **Verified** from the bridge on the first
+unit. M-UPGRADE, M-VAVE's own updater, is untested on the bridge. Our firmware answers the
+handshake like stock does (`tools/install.sh --info` shows `FM-1_931`, or `FM-1_930` for the
+minimal build). If the device shows as `ota-FM-1_900` ("Felucca Update"), the loader our
+packages carry is waiting: run the same install again, it resumes.
 
 ### 2. The firmware runs but the updater does not
 Three doors into the mask ROM without hardware, all setting the soft key in NVRAM and
 resetting:
 
-- the System page, *USB recovery mode*;
+- the System page, *USB recovery mode* (not yet tried on the unit);
 - the SysEx soft key, which stock, Felucca and this bridge all honour:
   `F0 22 24 35 7D F7`  (`tools/fm1_recover.py --softkey`); **verified on stock V15 and on this
   bridge** (`FM-1_931`, 2026-10-20). Back out of the ROM: switch off, unplug, wait 5 s, plug in,
@@ -206,10 +221,15 @@ resetting:
 `tools/fm1_recover.py` with no option tries the last two and waits for the UBOOT disk.
 
 ### 3. The firmware never enumerates
-Crash before USB, boot loop, dead screen. The dongle on D+/D- at power-up, then
-`tools/fm1_flash.sh restore fm1-stock-full.bin` (or the stock `flash.bin` out of the
-official package, which holds head + app area and leaves the unit data as it is). The
-4 s hardware watchdog and the 5 s bridge heartbeat restart the app, they do not fall
+Crash before USB, boot loop, dead screen. The dongle on D+/D- at power-up, then the app area
+of your dump back: `tools/fm1_flash.sh restore-app ../fm1-dumps/fm1-FM-1_015-full-DATE.bin` (the
+dump `fm1_safe_install.sh` took; head, VM and the unit's own data are not written). Power-cycle:
+stock answers, and the install starts over. **Verified** on the first unit (the same write, by hand
+in jl-uboot-tool's shell). `tools/fm1_flash.sh restore` writes the whole 1 MB and has never run:
+a last resort, and only ever with this unit's own dump (another unit's carries its Bluetooth and
+user data). Without a dump of your own there is no tested way back from here: take one first
+(step 2). Another unit's app area is encrypted with that unit's chip key, which may differ.
+The 4 s hardware watchdog and the 5 s bridge heartbeat restart the app, they do not fall
 back to the ROM by themselves.
 
 ### 4. Last resort
@@ -220,9 +240,10 @@ Open the case and program the SPI NOR with a clip. There are no debug pads.
 | USB shows | State |
 | --- | --- |
 | MIDI device "FM-1" (USB 4c4a:c755), identity `FM-1_015` | stock (verified) |
-| MIDI device "Felucca MIDI 1" + USB audio "Felucca", identity `FM-1_900` | the drummer, BackBeat (verified) |
-| MIDI device "FM-1", identity `FM-1_931` / `FM-1_930` | this bridge / its minimal build |
-| MIDI device, identity `ota-FM-1_015` | the update loader, waiting for step 2 |
+| MIDI device "Felucca MIDI 1" + USB audio "Felucca", identity `FM-1_900` | BackBeat, the author's drummer firmware (verified) |
+| MIDI device "FM-1" (USB 3654:4155), identity `FM-1_931` / `FM-1_930` | this bridge / its minimal build (verified) |
+| MIDI device "Felucca Update" (USB 1209:0002), identity `ota-FM-1_900` | Felucca's update loader, which our packages carry, waiting for step 2: rerun the install |
+| MIDI device, identity `ota-FM-1_015` | stock's own update loader (M-UPGRADE's), waiting for step 2 (from the protocol notes; not seen on the unit) |
 | USB disk 4c4a:8057, SCSI model `WL82 UBOOT1.00`, `/dev/sgN` | mask ROM download mode: jl-uboot-tool territory (verified) |
 | nothing | soft-locked or off: dongle |
 
@@ -236,8 +257,9 @@ restart.
 
 ## What never to do
 
-- Never write the flash head (0x0 to 0x4000). Our packager never does; `restore` writes
-  the head only from a dump of the same unit or the stock image, which are the same bytes.
+- Never write the flash head (0x0 to 0x4000). Our packager never does, nor does
+  `restore-app`; `restore` writes it, so only ever from this unit's own dump.
+- Never share your dump: it holds the unit's Bluetooth and user data.
 - Never drive PB1 (the battery divider).
 - Never change the VM region in the packager fork: it ends at 0xE0000 so the SDK's
   storage never touches the staged loader or the update record at 0xE4F00.

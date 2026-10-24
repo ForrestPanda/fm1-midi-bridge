@@ -10,6 +10,8 @@
 void ble_midi_set_rx(void *priv, void (*cb)(void *priv, const u8 *pkt, u16 len));
 u16 ble_midi_max_packet(void);     /* bytes one notification may carry (ATT_MTU - 3) */
 int ble_midi_ready(void);          /* connected and the central subscribed */
+void ble_midi_set_pairable(u8 on);  /* advertise or not, also after a disconnect (not saved) */
+int ble_midi_pairable(void);
 int ble_midi_send(const u8 *pkt, u16 len);   /* 0 = queued */
 void ble_midi_role_peripheral(void);
 void ble_midi_set_link_mode(int mode);       /* BLE_LINK_* (settings.h) */         /* re-enable the peripheral role (after host mode) */

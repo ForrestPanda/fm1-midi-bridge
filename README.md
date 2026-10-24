@@ -9,9 +9,16 @@ Firmware that turns the M-VAVE FM-1 into a MIDI bridge:
 - **host mode**: the FM-1 as a BLE *central* that connects to a BLE MIDI keyboard and
   forwards it to USB (and USB back to the keyboard)
 
+plus a small MIDI bench on the panel: a decoding MIDI log, a composer, statistics, a
+recorder, a clock master. It replaces the synth firmware; M-VAVE's official package puts
+that back (`docs/install.md`).
+
 The FM-1 has **no TRS MIDI OUT**: the 3.5 mm jack is MIDI IN only (see
-`docs/hardware.md`). So "BLE -> TRS" is not possible without a hardware mod;
-"BLE -> USB" is the reverse direction this project targets.
+`docs/hardware.md`), so Bluetooth or USB to TRS is not possible without a hardware mod.
+What arrives over Bluetooth goes out over USB instead.
+
+**Install:** `docs/install.md` (prebuilt packages on the releases page, a full flash backup
+first, the way back to stock). **Use:** `docs/manual.md`.
 
 Status: **alpha, tested on one FM-1** (since 2026-10-19; `docs/recovery.md`, "The bridge on the
 first unit"; the test results are in `CHANGELOG.md`). Verified on the unit:
@@ -24,13 +31,16 @@ first unit"; the test results are in `CHANGELOG.md`). Verified on the unit:
 - The UI on the panel: every page used by hand, including the MIDI log and its filters, the
   Composer, the Recorder, Statistics, Panic, presets with names, the battery bar, the backlight.
 - The web editor (settings, presets, backup, firmware install), the soft key into the mask ROM,
-  installs and reinstalls through its own update entry.
+  installs and reinstalls through its own update entry, stock V15 back through Felucca's installer,
+  and a unit that never enumerated brought back with a dongle and its dump (`docs/recovery.md`).
 
-Not yet: iOS, M-VAVE's own updater (M-UPGRADE) taking the unit back to stock, a meter on the
-battery, the key matrix of other production batches. The MIDI codecs, the router, the editor and
-the update entry also pass host tests.
+Not yet: iOS and macOS, M-VAVE's own updater (M-UPGRADE) on top of the bridge, a meter on the
+battery, a second unit (the key matrix may differ by production batch). The MIDI codecs, the
+router, the editor and the update entry also pass host tests.
 
 ## Build
+
+Only needed to change the firmware; the releases have the packages.
 
 ```
 sh tests/run_tests.sh                     # host tests, needs cc
@@ -39,7 +49,7 @@ ulimit -n 8192 && make -C app -j8         # build/fm1bridge.elf and build/app.bi
 
 `make SDK=... TOOL_DIR=...` overrides the SDK checkout and toolchain locations.
 ```
-sh tools/package.sh            # build/fm1bridge.fwsc (needs Felucca built next door, for its loader)
+sh tools/package.sh            # build/fm1bridge.fwsc (needs Felucca v1.6 built next to this clone, for its loader)
 sh tools/install.sh --info     # identity of a connected FM-1
 sh tools/fm1_safe_install.sh build/fm1bridge.fwsc   # install (docs/recovery.md); tools/install.sh is the bare installer
 ```
@@ -64,7 +74,9 @@ dumps and restores the whole flash from there through jl-uboot-tool.
 MIT for our code, Apache-2.0 for the files derived from the AC79 SDK, GPL-3 for the
 packager fork and the loader it bundles (host-side and separate programs, never linked
 in); the firmware links JieLi's binary-only libraries from the SDK (Apache-2.0 like the
-rest of it). The map is `LICENSE`, the authority per file its SPDX line. Not ready to share yet: `docs/plan.md`, "Before sharing".
+rest of it). The map is `LICENSE`, the authority per file its SPDX line. A release package
+carries Felucca's update loader (GPL-3) as a separate program; its source is Felucca's tag
+`v1.6` (https://github.com/hugelton/Felucca/tree/v1.6, `firmware/loader/`).
 
 ## Why not a Felucca fork
 
@@ -79,6 +91,7 @@ for the FM-1 pin map and the update protocol. No Felucca code is copied.
 
 | Path | What |
 | --- | --- |
+| `docs/install.md` | installing a release, the backup first, going back to stock |
 | `docs/hardware.md` | FM-1 board facts: SoC, pins, jacks, flash map |
 | `docs/update-protocol.md` | how firmware gets onto the FM-1 over USB-MIDI SysEx, and what our app must keep |
 | `docs/ble-midi.md` | the BLE MIDI 1.0 service, packet format and timing |
@@ -86,6 +99,8 @@ for the FM-1 pin map and the update protocol. No Felucca code is copied.
 | `docs/manual.md` | the user manual: what the device does, every page, updating, limits |
 | `docs/sdk-notes.md` | what the AC79 SDK provides and how we use it (build, update, BLE, USB, UART) |
 | `docs/recovery.md` | why the FM-1 is hard to brick, what to do before the first install, the recovery ladder |
+| `docs/web-editor.md` | the web editor and its SysEx protocol |
+| `CHANGELOG.md`, `LICENSE` | what changed and what was verified on the unit; the license map |
 | `app/` | the SDK application: `Makefile`, `app_main.c`, `board/`, `bt_ble/`, `include/` (derived from the SDK's `demo_ble`, Apache-2.0) |
 | `app/midi/` | transport-independent MIDI code: byte-stream parser, BLE MIDI packet codec, USB-MIDI event codec, routing matrix (MIT) |
 | `app/usb/` | USB-MIDI device class on the SDK USB stack, and the SDK composite-device file with a MIDI branch (Apache-2.0) |
@@ -93,17 +108,22 @@ for the FM-1 pin map and the update protocol. No Felucca code is copied.
 | `tools/package.sh`, `tools/install.sh` | packaging with the fork, install with Felucca's installer (external GPL tool) |
 | `tools/fm1_safe_install.sh` | the first install on a unit: identity, soft key, full dump and survey, then the install |
 | `tools/fm1_install_paced.py` | the installer with the host's SysEx paced (for a firmware whose USB ring is too small for a reply) |
-| `tools/fm1_editor.py` | the web editor's questions from the shell: info, counters, heap and stack margins, the device log; `set FIELD=VALUE` writes a setting (`set ble_mode=1`: host mode), `send` raw MIDI to a port, `host` the host mode's scan list and its connect / disconnect / scan buttons |
+| `tools/fm1_editor.py` | the web editor's questions from the shell: info, counters, heap and stack margins, the device log; `set FIELD=VALUE` writes a setting (`set ble_mode=1`: host mode), `send` raw MIDI to a port, `host` the host mode's scan list and its connect / disconnect / scan buttons, `names` the preset names, `matrix` the key matrix as the scanner sees it |
+| `tools/fm1_dump_survey.py` | reads a 1 MB flash dump and reports which sectors hold the unit's own data |
 | `tools/ble_midi_peripheral.py` | a BLE MIDI keyboard made of the PC's Bluetooth adapter (BlueZ over D-Bus): advertises the MIDI service, plays a note every so often once subscribed, prints what the central writes; the test keyboard for host mode |
 | `tools/usb_to_ble.py` | the USB to BLE route under test: the PC as the BLE central subscribes to the FM-1, a known sequence goes into its USB port, loss, order, latency and packet sizes are reported (`--gap 0`: one burst, `--clock BPM`: a MIDI clock under it, `--reverse`: BLE to USB) |
-| `tools/trs_tester/`, `tools/trs_test.py` | the TRS input under test: an STM32F4-Discovery (firmware on the TRS MIDI bridge project's board code) plays byte scripts on the FM-1's MIDI IN with microsecond timing (tip to PA2, ring to PA3); the tool predicts what the FM-1 forwards and checks USB and, with `--ble`, BLE |
+| `tools/trs_tester/`, `tools/trs_test.py` | bench only, the TRS input under test: an STM32F4-Discovery (its firmware builds on the author's unpublished STM32 MIDI project, so not from this tree alone) plays byte scripts on the FM-1's MIDI IN with microsecond timing (tip to PA2, ring to PA3); the tool predicts what the FM-1 forwards and checks USB and, with `--ble`, BLE |
 | `tools/dongle/` | the mask-ROM USB key: `stm32f4disco/` (verified on the first unit), `fm1_key.py` (RP2040 MicroPython, untested) |
 | `tools/mkapp.sh` | ELF -> `app.bin` (the four sections the SDK packer concatenates) |
-| `tools/fm1_recover.py`, `tools/fm1_flash.sh` | soft key / vendor request into the mask-ROM download mode; whole-flash dump and restore through jl-uboot-tool |
+| `tools/fm1_recover.py`, `tools/fm1_flash.sh` | soft key / vendor request into the mask-ROM download mode; whole-flash dump, app-area restore (`restore-app`) and full restore through jl-uboot-tool |
 | `tools/mkfont.py` | renders DejaVu Sans Mono into `app/ui/font.h` (8x14, 1 bpp) |
 | `tools/gatt_midi.py` | generates `app/bt_ble/midi_profile.h`, the ATT database of the BLE MIDI service |
 | `tools/ui_walk.py` | walks every UI page in fm1-emu's live tool with key scripts; a decode gap shows as a halt, pictures in `build/ui_walk/` |
 | `app/bridge.c` | the bridge task: ports -> parser/decoders -> router -> encoders |
+| `app/trs_uart.c` | TRS MIDI IN: UART1 on PH8 at register level, RX DMA ring and interrupts (MIT) |
+| `app/editor.c`, `app/editor_port.c` | the settings editor's SysEx commands (`docs/web-editor.md`) (MIT) |
+| `app/health.c` | boot and reset counters, the clean-boot rule, the stall monitor (MIT) |
+| `app/util/` | small shared helpers: the log ring, CRC-16, the 8-to-7 SysEx packing (MIT) |
 | `app/fm1_log.c`, `app/util/logring.c` | the device log: 4 KB RAM ring, the SDK log hook, read over SysEx by the web editor (MIT) |
 | `app/minimal.c` | the first-install build's status task (`make MINIMAL=1`) |
 | `app/ui/` | panel driver, UI task, menu renderer, pages and the MIDI logger; `font.h` generated by `tools/mkfont.py` (MIT) |
@@ -120,23 +140,25 @@ for the FM-1 pin map and the update protocol. No Felucca code is copied.
 
 ## UI
 
-Splash, then a main menu: Routing, MIDI log, Bluetooth, USB, MIDI filters, Display,
-System (with Input test). SELECT or PRESETS scrolls, OCT+ is OK or toggle, OCT- goes
-back, HOME returns to the main menu, KNOB1 adjusts a value, holding GLO toggles BLE
-power saving. Example screenshots, rendered from the real font and layout rules by
-`tools/ui_mock.py`:
+Splash, then the Status page (the links, the counters, the routes); HOME opens the main
+menu: Status and Perform, then three groups: Setup (Bluetooth, USB, Routing, MIDI filters,
+Keyboard, Button MIDI, Presets), Bench (MIDI log, Composer, Statistics, Recorder, Clock
+master, MIDI reference) and Device (Display, System with its Input test). SELECT or PRESETS scrolls, OCT+ is OK or toggle,
+OCT- goes back, HOME returns to Status, hold HOME opens Perform, KNOB1 adjusts a value,
+holding GLO toggles BLE power saving; the whole table is in `docs/manual.md`. Example
+screenshots, rendered from the firmware's font and page layouts by `tools/ui_mock.py`:
 
 ![All pages](docs/ui-examples/all-pages.png)
 
-## Footprint (build of 2026-10-16)
+## Footprint (v0.2.0, build of 2026-10-24)
 
 | | full build | minimal build | of |
 | --- | --- | --- | --- |
-| `app.bin` (flash) | 364,256 B (356 KB), 63% | 205,296 B (200 KB), 35% | 581,564 B app slot |
-| `.text` | 347,872 B | 191,200 B | |
-| static RAM, initialised (`.ram0_data`) | 16,352 B | 14,064 B | includes the matrix ISR code copied to RAM |
-| static RAM, zeroed (`.ram0_bss`) | 80,608 B | 69,072 B | ours plus the SDK's |
-| static RAM total | 96,960 B (95 KB) | 83,136 B (81 KB) | 512 KB internal RAM; the rest is SDK heap, Bluetooth and task stacks |
+| `app.bin` (flash) | 371,712 B (363 KB), 64% | 211,260 B (206 KB), 36% | 581,564 B app slot |
+| `.text` | 355,008 B | 197,152 B | |
+| static RAM, initialised (`.ram0_data`) | 16,672 B | 14,076 B | includes the matrix ISR code copied to RAM |
+| static RAM, zeroed (`.ram0_bss`) | 87,968 B | 76,420 B | ours plus the SDK's |
+| static RAM total | 104,640 B (102 KB) | 90,496 B (88 KB) | 512 KB internal RAM; the rest is SDK heap, Bluetooth and task stacks |
 
 Largest things of ours in RAM: the recorder (2048 events, 16 KB), the device log
 ring (4 KB), the two note collision guards (4 KB), the panel text strip (6.7 KB),
@@ -146,7 +168,7 @@ the MIDI log rings (64 lines, 6 KB), the BLE host and peripheral ATT buffers (ab
 drops it). The bridge and UI tasks each get a 1024-word stack; the minimal build's
 status task 768 words. For comparison, the SDK's bare BLE demo is 283 KB of flash
 and 25 KB of static RAM, so the whole bridge, UI and learner feature set costs about
-60 KB of flash and 65 KB of RAM on top of the stack. The minimal build still links
+80 KB of flash and 77 KB of RAM on top of the stack. The minimal build still links
 the Bluetooth libraries (their static buffers are most of its RAM) but never starts them.
 
 Reproduce: `objdump -section-headers build/fm1bridge.elf` with the JieLi toolchain,
@@ -165,7 +187,7 @@ and `ls -l build/app.bin`.
 
 ## References
 
-- Felucca (GPL-3, hugelton): https://github.com/hugelton/Felucca — HAL headers
+- Felucca (GPL-3, hugelton): https://github.com/hugelton/Felucca (tag `v1.6`) — HAL headers
   document the FM-1 registers and pins; `tools/fm1pkg_make.py` documents the
   `.fwsc` package format; issue 17 explains the Bluetooth situation
 - aroum/fm1-custom-fw: reverse engineering of the stock updater and SysEx protocol

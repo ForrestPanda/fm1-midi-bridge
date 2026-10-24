@@ -85,7 +85,7 @@
 //*********************************************************************************//
 //                                   USB (fm1-midi-bridge)                          //
 //*********************************************************************************//
-#define FM1_FW_VERSION                      "0.1.0"
+#define FM1_FW_VERSION                      "0.2.0"
 #ifndef FM1_MINIMAL
 #define FM1_MINIMAL                         0       /* 1 (make MINIMAL=1): first-install build, see app/minimal.c */
 #endif

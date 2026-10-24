@@ -666,7 +666,7 @@ static const ui_item clk_items[] = {
     { "",             UI_INFO,   NULL, NULL, NULL, NULL },
     { "Sends F8 at 24 per quarter,", UI_INFO, NULL, NULL, NULL, NULL },
     { "Start on run, Stop on stop.", UI_INFO, NULL, NULL, NULL, NULL },
-    { "PLAY toggles it on this page.", UI_INFO, NULL, NULL, NULL, NULL },
+    { "OK, or PLAY without a job.", UI_INFO, NULL, NULL, NULL, NULL },
 };
 static ui_menu clk_menu = { clk_items, 7, 0, 0, NULL };
 static void clk_enter(void) { ui_menu_enter(&clk_menu); }
@@ -680,14 +680,13 @@ static void clk_tick(void) { static u8 k; if (++k >= 5) { k = 0; ui_invalidate()
 static const ui_page page_clock = { "Clock master", clk_enter, clk_draw, clk_event, clk_tick };
 
 /* ------------------------------------------------------------------ bluetooth */
-static u8 pairable = 1;
 static void v_ble_state(char *b, int n)
 {
-    if (!ble_host_active() && !ble_midi_ready() && !bt_ble_is_connected() && !pairable) snprintf(b, n, "idle");
+    if (!ble_host_active() && !ble_midi_ready() && !bt_ble_is_connected() && !ble_midi_pairable()) snprintf(b, n, "idle");
     else snprintf(b, n, "%s", ble_port_state_text());
 }
-static void v_pairable(char *b, int n) { onoff(b, n, pairable); }
-static void a_pairable(int d) { (void)d; if (ble_host_active()) return; pairable = !pairable; bt_ble_adv_enable(pairable); }
+static void v_pairable(char *b, int n) { onoff(b, n, ble_midi_pairable()); }
+static void a_pairable(int d) { (void)d; if (ble_host_active()) return; ble_midi_set_pairable(!ble_midi_pairable()); }
 static void v_link(char *b, int n) { snprintf(b, n, "%s", settings_get()->ble_link_mode == BLE_LINK_POWER_SAVING ? "power saving" : "low latency"); }
 static void a_link(int d) { (void)d; settings_get()->ble_link_mode = !settings_get()->ble_link_mode; mark(); ble_port_set_link_mode(settings_get()->ble_link_mode); }
 static void v_hostauto(char *b, int n) { onoff(b, n, settings_get()->ble_host_auto); }

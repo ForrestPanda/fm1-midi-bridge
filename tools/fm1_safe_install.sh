@@ -14,17 +14,22 @@
 #     --no-dump    skip 2..5 (this unit has its dump already)
 #     --dump-only  stop after 5: a backup, nothing installed (PACKAGE may be omitted)
 #     --port NAME  the MIDI port, when the default match is not enough (passed to the tools)
-#     --force      a package without the Felucca loader marker (stock V15: going back)
-# Env: FM1_INSTALL  the fm1_install.py to use (default: fm1-backbeat's copy, else Felucca's)
-#      FM1_DUMPS    where dumps go (default: my_fw/fm1-dumps; never commit them, keep a second copy elsewhere)
+#     --force      a package without the Felucca loader marker (never needed for M-VAVE's FM-1.fwsc:
+#                  Felucca's installer knows that one by its SHA-256 and takes the unit back to stock)
+# Env: FM1_INSTALL  the fm1_install.py to use (default: Felucca's, next to this clone or one level up)
+#      FM1_DUMPS    where dumps go (default: fm1-dumps next to this clone, outside the repository;
+#                   never commit or share them, keep a second copy elsewhere)
 #      JLUBOOT      the jl-uboot-tool checkout (default and setup: the header of fm1_flash.sh)
 # Needs: python3 with mido and python-rtmidi; jl-uboot-tool with its requirements; root for the ROM disk
 # (/dev/sgN is root:disk): the script runs `sudo chmod 666` on it and sudo asks for your password.
 set -e
 here=$(cd "$(dirname "$0")/.." && pwd)
-top=$(cd "$here/.." && pwd)                       # my_fw
-INSTALL=${FM1_INSTALL:-$top/fm1-backbeat/tools/fm1_install.py}
-[ -f "$INSTALL" ] || INSTALL=$top/../Felucca/tools/fm1_install.py
+top=$(cd "$here/.." && pwd)                       # the directory this clone sits in
+sibling() {   # $1 checked out next to this clone, or one level further up; the first that exists
+    for d in "$here/.." "$here/../.."; do [ -d "$d/$1" ] && { (cd "$d/$1" && pwd); return; }; done
+    echo "$here/../$1"
+}
+INSTALL=${FM1_INSTALL:-$(sibling Felucca)/tools/fm1_install.py}
 DUMPS=${FM1_DUMPS:-$top/fm1-dumps}
 
 pkg=""; dump=1; install=1; port=""; force=""
@@ -34,7 +39,7 @@ while [ $# -gt 0 ]; do
     --dump-only) install=0 ;;
     --port) port="--port $2"; shift ;;
     --force) force="--force" ;;
-    -h|--help) sed -n 2,21p "$0"; exit 0 ;;
+    -h|--help) sed -n 2,24p "$0"; exit 0 ;;
     -*) echo "fm1_safe_install.sh: unknown option $1 (--help)"; exit 2 ;;
     *) pkg=$1 ;;
     esac
@@ -48,10 +53,10 @@ say() { printf '\n== %s\n' "$*"; }
 die() { printf 'fm1_safe_install.sh: %s\n' "$*" >&2; exit 1; }
 
 # -- prerequisites, before anything talks to the device
-[ -f "$INSTALL" ] || die "no fm1_install.py (FM1_INSTALL)"
+[ -f "$INSTALL" ] || die "no $INSTALL: git clone https://github.com/hugelton/Felucca next to this tree, or set FM1_INSTALL"
 python3 -c "import mido, rtmidi" 2>/dev/null || die "pip3 install mido python-rtmidi"
 if [ $dump -eq 1 ]; then
-    JLUBOOT=${JLUBOOT:-$here/../../jl-uboot-tool}
+    JLUBOOT=${JLUBOOT:-$(sibling jl-uboot-tool)}
     [ -f "$JLUBOOT/jluboottool.py" ] || die "jl-uboot-tool missing at $JLUBOOT (the header of tools/fm1_flash.sh)"
     python3 -c "import scsiio, crcmod, yaml, Cryptodome, tqdm" 2>/dev/null \
         || die "pip3 install --user -r $JLUBOOT/requirements.txt"
