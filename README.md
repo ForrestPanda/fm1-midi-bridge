@@ -18,7 +18,8 @@ The FM-1 has **no TRS MIDI OUT**: the 3.5 mm jack is MIDI IN only (see
 What arrives over Bluetooth goes out over USB instead.
 
 **Install:** `docs/install.md` (prebuilt packages on the releases page, a full flash backup
-first, the way back to stock). **Use:** `docs/manual.md`.
+first, the way back to stock). **Use:** `docs/manual.md`. **Web editor:** https://forrestpanda.github.io/fm1-midi-bridge/web/editor.html (Chrome or
+Edge, the FM-1 on USB).
 
 Status: **alpha, tested on one FM-1** (since 2026-10-19; `docs/recovery.md`, "The bridge on the
 first unit"; the test results are in `CHANGELOG.md`). Verified on the unit:

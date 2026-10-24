@@ -1,8 +1,8 @@
 # Web editor
 
 `web/editor.html` edits every setting from a browser over USB-MIDI, using Web MIDI
-(Chrome or Edge). Web MIDI with SysEx needs a secure context: serve the page over https or
-from localhost:
+(Chrome or Edge). Open it at **https://forrestpanda.github.io/fm1-midi-bridge/web/editor.html**, or, since Web MIDI with SysEx needs a secure context
+(https or localhost), serve your own copy locally:
 
 ```
 cd web && python3 -m http.server 8000     # then open http://localhost:8000/editor.html

@@ -1,8 +1,8 @@
 # Installing, and going back to stock
 
 The short version of `recovery.md`, for a computer running Linux (the backup step needs it).
-Once the bridge is on, later updates also install from the web editor's Firmware card, in
-Chrome or Edge on any system.
+Once the bridge is on, later updates also install from the web editor's Firmware card
+(https://forrestpanda.github.io/fm1-midi-bridge/web/editor.html), in Chrome or Edge on any system.
 
 **Alpha, tested on one FM-1.** Installing is at your own risk. The steps below keep a way back
 at every point, but one case (a firmware that never shows on USB) needs a dongle.

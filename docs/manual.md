@@ -332,7 +332,7 @@ the SysEx soft key that does the same is verified, this row not yet). *Reset set
 
 ## Web editor
 
-Open `web/editor.html` from a local web server in Chrome or Edge (`docs/web-editor.md`),
+Open https://forrestpanda.github.io/fm1-midi-bridge/web/editor.html in Chrome or Edge (or a local copy of `web/editor.html`, `docs/web-editor.md`),
 connect the FM-1 by USB, click Connect. The settings are on one page, including channel
 sets, all 27 key jobs, the presets and their names, and the page shows every MIDI
 message the FM-1 sends. Two things stay on the panel only, the MIDI log's filters and
