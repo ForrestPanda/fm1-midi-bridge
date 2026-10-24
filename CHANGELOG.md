@@ -10,6 +10,9 @@ Felucca v1.6's update loader. Install: `docs/install.md`.
   follows it too. Still not saved: a reboot makes it findable again. Verified on the unit
   (2026-10-24): hidden after a disconnect and out of range, back on when switched on, hidden
   after host mode, advertising after a reboot.
+- Verified on the unit (2026-10-24): this release installs over another firmware (BackBeat 0.9,
+  `FM-1_985`) and installs BackBeat's release package over itself, both through Felucca's
+  installer.
 - The Clock master page's hint and the web editor say how to start the clock: OK on the Clock
   row, or PLAY once PLAY has no MIDI job (it sends CC 64 out of the box).
 - Version 0.2.0 (splash, System page, editor INFO).

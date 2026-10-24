@@ -61,6 +61,10 @@ sh tools/install.sh FM-1.fwsc
 Verified on the first unit. M-VAVE's own updater (M-UPGRADE) has not been tried on top of
 the bridge.
 
+The same command installs another community firmware over the bridge (a `.fwsc` with Felucca's
+update loader), and `fm1_safe_install.sh` installs the bridge over one: both ways verified
+with BackBeat 0.9.
+
 ## If something goes wrong
 
 `recovery.md`, "The ladder": the soft key into the chip's ROM download mode

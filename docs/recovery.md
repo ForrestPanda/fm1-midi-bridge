@@ -4,7 +4,7 @@ Walked on the first unit on 2026-10-19: what that unit showed is marked **verifi
 is what the stock mechanism, Felucca's installer, the SDK sources and jl-uboot-tool say.
 `tools/fm1_safe_install.sh` runs the pre-install steps and the install in order (below,
 "Before the first install"); `docs/install.md` is the short version. The unit records below
-also mention **BackBeat** ("the drummer", identity `FM-1_900`): the author's other FM-1
+also mention **BackBeat** ("the drummer", identity `FM-1_985` since 0.9, `FM-1_900` before): the author's other FM-1
 firmware, a SLOOP fork, which went onto the first unit before the bridge.
 
 ## Why the FM-1 is hard to brick
@@ -194,6 +194,15 @@ and a stored host mode is not entered after a boot that never ran clean, so a ho
 crash loop cannot keep the unit from its updater. The unit kept answering the editor between
 every experiment; nothing needed the dongle.
 
+### Another firmware and back, 2026-10-24
+
+BackBeat 0.9 (`FM-1_985`) to the v0.2.0 bridge (`build/fm1bridge.fwsc`, SHA-256 `f77255a8…`)
+through BackBeat's own update entry, then BackBeat's release package (`backbeat-0.9.fwsc`,
+SHA-256 `850a8641…`, the same as its GitHub release asset) through the bridge's: both with
+`fm1_safe_install.sh --no-dump` and Felucca v1.6's installer, each run straight through, the
+new identity answering right after. So the bridge takes the next update from another Felucca-loader
+firmware and hands it on to one, as it does to stock.
+
 ## The ladder, cheapest first
 
 ### 1. The firmware runs and enumerates
@@ -240,7 +249,7 @@ Open the case and program the SPI NOR with a clip. There are no debug pads.
 | USB shows | State |
 | --- | --- |
 | MIDI device "FM-1" (USB 4c4a:c755), identity `FM-1_015` | stock (verified) |
-| MIDI device "Felucca MIDI 1" + USB audio "Felucca", identity `FM-1_900` | BackBeat, the author's drummer firmware (verified) |
+| MIDI device "Felucca MIDI 1" + USB audio "Felucca", identity `FM-1_985` (`FM-1_900` before 0.9) | BackBeat, the author's drummer firmware (verified) |
 | MIDI device "FM-1" (USB 3654:4155), identity `FM-1_931` / `FM-1_930` | this bridge / its minimal build (verified) |
 | MIDI device "Felucca Update" (USB 1209:0002), identity `ota-FM-1_900` | Felucca's update loader, which our packages carry, waiting for step 2: rerun the install |
 | MIDI device, identity `ota-FM-1_015` | stock's own update loader (M-UPGRADE's), waiting for step 2 (from the protocol notes; not seen on the unit) |
