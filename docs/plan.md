@@ -292,8 +292,8 @@ they had when written unless marked otherwise; what is verified on the hardware 
   (`WL82 UBOOT1.00`, USB 4c4a:8057), jl-uboot-tool on WL82: **all verified 2026-10-19/20**.
 - **Open:** the SDK vendor request (`fm1_recover.py --vendor`) and the System page's *USB
   recovery mode*; M-UPGRADE on top of the bridge (USB strings "FM-1", but JieLi's 3654:4155,
-  not stock's 4c4a:c755); the Pairable change of 2026-10-24 (off survives a disconnect); iOS
-  and macOS; another unit's key matrix.
+  not stock's 4c4a:c755); iOS and macOS; another unit's key matrix. (The Pairable change of
+  2026-10-24, off surviving a disconnect, verified the same day.)
 
 ## First-boot checklist (when an FM-1 is here)
 

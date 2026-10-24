@@ -6,8 +6,10 @@ Packages: `fm1bridge.fwsc` (`FM-1_931`) and `fm1bridge-minimal.fwsc` (`FM-1_930`
 Felucca v1.6's update loader. Install: `docs/install.md`.
 
 - Pairable off (Bluetooth page) now keeps the FM-1 hidden after a disconnect too; it used to
-  advertise again at the next disconnect while the row still read "off". Still not saved: a
-  reboot makes it findable again. **Verify on the unit.**
+  advertise again at the next disconnect while the row still read "off"; leaving host mode
+  follows it too. Still not saved: a reboot makes it findable again. Verified on the unit
+  (2026-10-24): hidden after a disconnect and out of range, back on when switched on, hidden
+  after host mode, advertising after a reboot.
 - The Clock master page's hint and the web editor say how to start the clock: OK on the Clock
   row, or PLAY once PLAY has no MIDI job (it sends CC 64 out of the box).
 - Version 0.2.0 (splash, System page, editor INFO).
