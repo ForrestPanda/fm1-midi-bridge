@@ -377,7 +377,10 @@ outside presets.
 
 ## Limits
 - The 3.5 mm jack is an input only; the FM-1 cannot drive a hardware synth from it.
-- Bluetooth host mode and the normal mode do not run at the same time.
+- Bluetooth host mode and the normal mode do not run at the same time: entering host mode
+  drops the phone or tablet. The chip and the SDK can hold both roles at once (a tablet on
+  the FM-1 and the FM-1 on a BLE keyboard, even two of each); that is possible future work,
+  not in this build (`docs/plan.md`, "Future work: a phone and a keyboard at once").
 - Keys have no velocity sensing; the keyboard sends the velocity set on its page.
 - Latency: USB a few milliseconds, Bluetooth about 10 to 25 ms depending on the
   connection interval the other side grants.

@@ -35,7 +35,8 @@ first unit"; the test results are in `CHANGELOG.md`). Verified on the unit:
   installs and reinstalls through its own update entry, stock V15 back through Felucca's installer,
   and a unit that never enumerated brought back with a dongle and its dump (`docs/recovery.md`).
 
-Not yet: iOS and macOS, M-VAVE's own updater (M-UPGRADE) on top of the bridge, a meter on the
+Not yet: BLE host mode and a connected phone or tablet at the same time (one role at a time
+today; the chip can do both, `docs/plan.md`, "Future work"), iOS and macOS, M-VAVE's own updater (M-UPGRADE) on top of the bridge, a meter on the
 battery, a second unit (the key matrix may differ by production batch). The MIDI codecs, the
 router, the editor and the update entry also pass host tests.
 
