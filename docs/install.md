@@ -11,7 +11,10 @@ at every point, but one case (a firmware that never shows on USB) needs a dongle
 
 - The release packages from https://github.com/ForrestPanda/fm1-midi-bridge/releases:
   `fm1bridge-minimal.fwsc`, `fm1bridge.fwsc` and `SHA256SUMS`, saved into the
-  `fm1-midi-bridge` clone below; check them there with `sha256sum -c SHA256SUMS`.
+  `fm1-midi-bridge` clone below; check them there with `sha256sum -c SHA256SUMS`. The
+  release also carries `licenses.zip` (the licence texts and third-party notices for what
+  the packages contain) and `felucca-v1.6-source.tar.gz` (the source of the update loader
+  inside the packages, GPL-3); neither is needed to install.
 - M-VAVE's official firmware package `FM-1.fwsc` (V15, from M-VAVE's site), to go back;
   keep it in the clone too.
   SHA-256 `db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a`; the installer

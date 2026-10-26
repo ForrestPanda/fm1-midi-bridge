@@ -1,6 +1,23 @@
-/* SPDX-License-Identifier: MIT */
-/* Written after the SDK's apps/common/ble/le_net_central.c (Apache-2.0): the same
- * stack calls, reduced to one job. See ble_host.h.
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Derived from the JieLi AC79 SDK apps/common/ble/le_net_central.c (Apache-2.0): the same
+ * stack calls and callback structure, rewritten and reduced to one job for the M-VAVE FM-1
+ * (ForrestPanda, 2026-10). The SDK file's notice follows. See ble_host.h.
+ */
+/*********************************************************************************************
+    *   Filename        : le_server_module.c
+
+    *   Description     :
+
+    *   Author          :
+
+    *   Email           : zh-jieli.com
+
+    *   Last modifiled  : 2017-01-17 11:14
+
+    *   Copyright:(c)JIELI  2011-2016  @ , All Rights Reserved.
+*********************************************************************************************/
+
+/*
  *
  * Who runs what: the stack's task calls host_packet_handler and the user_client_report_*
  * hooks; ble_host_enter / ble_host_exit run in an app task (the UI, the bridge for the

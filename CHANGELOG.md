@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+- Licensing, after an audit of the tree against the licences it claims (2026-10-25):
+  - `LICENSES/` holds the full texts the Apache-2.0, GPL-3 and Bitstream Vera licences require
+    to travel with the code and the binaries (plus TinyUSB's and micro-ecc's notices); the
+    tree had only links before. `THIRD-PARTY-NOTICES.md` lists what the release packages
+    carry from others: the SDK's libraries and the third-party code known inside them
+    (micro-ecc, newlib, FreeRTOS, compiler-rt), the SDK's three boot files, Felucca's loader.
+  - `tools/release.sh` assembles the release folder: both packages, `SHA256SUMS`,
+    `licenses.zip` and `felucca-v1.6-source.tar.gz`, the complete source of the update
+    loader inside each package (GPL-3 section 6 asks the distributor to keep it available,
+    not only to point at Felucca's repository). It checks that the loader in the packages is
+    the one built from the clean Felucca tag.
+  - The font headers carry the Bitstream Vera copyright and permission notice, as that
+    licence requires of every copy (`tools/mkfont.py` emits it; the glyphs are unchanged).
+  - `app/bt_ble/ble_host.c` is Apache-2.0 with JieLi's notice kept, like `ble_midi.c`: it
+    is derived from the SDK's `le_net_central.c`, the same relationship that already made
+    `usb_midi.c` Apache-2.0. `tools/fm1pkg_make.py` names its modification date (GPL-3
+    section 5a). `tools/fm1_install_paced.py` says that it runs as a GPL combination with
+    Felucca's installer. `tools/trs_tester/usb_descriptors.c` keeps TinyUSB's MIT notice,
+    being adapted from its `midi_test` example.
+  - Nothing in the firmware changed; the packages of v0.2.0 are unchanged.
+
 ## v0.2.0 (2026-10-24): first public alpha
 
 Packages: `fm1bridge.fwsc` (`FM-1_931`) and `fm1bridge-minimal.fwsc` (`FM-1_930`), with

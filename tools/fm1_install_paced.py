@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
+# This file is MIT on its own, but it imports and subclasses Felucca's fm1_install.py
+# (GPL-3.0-only, not in this tree): the program that runs is a combination governed by the
+# GPL-3.0-only (LICENSES/GPL-3.0-only.txt). Nothing of it goes into the firmware.
 """fm1_install.py with the host's SysEx sent in paced slices (Linux, ALSA sequencer).
 
 Why: a firmware whose USB-MIDI receive ring is smaller than one update reply (512 bytes of

@@ -40,7 +40,9 @@ the only way back is opening the case / the UBOOT dongle.
   CRCs (Felucca `ota.c`: header CRC 0xEBAA, data CRC 0x5881, length 0x4DE1).
   Redistribution rights unclear.
 - Felucca's loader (GPL-3): a separate program, not linked with our app. Shipping it
-  inside our package is aggregation; we must provide its source alongside.
+  inside our package is aggregation; its complete source (the Felucca tree at tag `v1.6`)
+  and the licence texts go next to the packages of every release (`tools/release.sh`,
+  `THIRD-PARTY-NOTICES.md`).
 - SDK loader: if the SDK tree has one that speaks the same 0x30 read protocol
   (unlikely, the protocol is M-VAVE's), use it.
 

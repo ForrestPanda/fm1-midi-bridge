@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
-# fm1-midi-bridge fork (build tool only, nothing of it is in the firmware):
+# Modified for fm1-midi-bridge by ForrestPanda, 2026-10-11 (build tool only, nothing of it is in the firmware):
 #   - the VM region entry ends at 0xE0000 instead of 0xE9000, so the SDK's VM driver
 #     (bonding keys, settings) can never touch the update staging area 0xE0000-0xE5000
 #     and the update record at 0xE4F00 (docs/plan.md, "Staging area vs. the SDK's VM")

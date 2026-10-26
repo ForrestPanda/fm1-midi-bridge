@@ -1,18 +1,19 @@
 fm1-midi-bridge: licensing
 
-This tree mixes code under three licences and builds against binary-only libraries.
+This tree mixes code under four licences and builds against binary-only libraries.
 Each source file carries an SPDX-License-Identifier line that is the authority
-for that file; this file is the map.
+for that file; this file is the map. The full licence texts are in LICENSES/;
+THIRD-PARTY-NOTICES.md lists what a release's binaries carry; tools/release.sh
+puts both next to the packages of every release.
 
 1. MIT (our code)
 
-   Everything written for this project: app/midi/, app/bridge.c, app/ui/,
-   app/input/, app/settings.c, app/update/, app/fm1_log.c, app/util/,
-   app/bt_ble/ble_host.c, ble_port.c, adv_parse.c, app/minimal.c, tests/,
-   tools/ (except tools/fm1pkg_make.py), web/editor.html and docs/.
-   The exception in app/ui/: font.h and font_big.h are bitmaps of DejaVu Sans
-   Mono glyphs rendered by tools/mkfont.py, under the Bitstream Vera Fonts
-   licence (SPDX Bitstream-Vera) like the font itself.
+   Everything written for this project: app/midi/, app/bridge.c, app/ui/ (except
+   the two font headers, below), app/input/, app/settings.c, app/update/,
+   app/fm1_log.c, app/health.c, app/util/, app/bt_ble/ble_port.c, adv_parse.c,
+   ble_host.h, app/usb/usb_port.c, app/minimal.c, tests/, tools/ (except
+   tools/fm1pkg_make.py, and see tools/fm1_install_paced.py and tools/trs_tester/
+   below), web/editor.html and docs/.
 
    Copyright (c) 2026 ForrestPanda
 
@@ -34,28 +35,53 @@ for that file; this file is the map.
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
    THE SOFTWARE.
 
+   tools/fm1_install_paced.py is MIT on its own but imports and subclasses
+   Felucca's fm1_install.py (GPL-3.0-only, not in this tree): the program that
+   runs is a combination under the GPL-3.0-only.
+
+   tools/trs_tester/usb_descriptors.c is adapted from TinyUSB's midi_test example,
+   Copyright (c) 2019 Ha Thach (tinyusb.org), MIT: its notice is kept in the file
+   and in LICENSES/MIT-TinyUSB.txt. The tester also links TinyUSB (MIT).
+
 2. Apache License 2.0 (code derived from the JieLi AC79 AIoT SDK)
 
-   app/app_main.c, app/Makefile, app/board/, app/include/, app/bt_ble/ (the
-   demo_ble-derived files) and app/usb/ (the USB-MIDI device class, written
-   after the SDK's cdc.c and hid.c, and the composite-device file with a MIDI
-   branch) are derived from the SDK's sources
-   (https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK), which JieLi publishes
-   under the Apache License, Version 2.0. You may obtain a copy of the License
-   at http://www.apache.org/licenses/LICENSE-2.0. Changes are noted at the top
-   of each file.
+   app/app_main.c, app/Makefile, app/board/, app/include/, app/bt_ble/ble.c,
+   ble_midi.c, ble_midi.h and ble_host.c (derived from the SDK's demo_ble,
+   le_trans_data.c and le_net_central.c; the last two carry JieLi's own notice,
+   kept at the top of our files), and app/usb/ except usb_port.c (the USB-MIDI
+   device class, written after the SDK's cdc.c and hid.c, and the composite-device
+   and descriptor files with a MIDI branch) are derived from the SDK's sources
+   (https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK, tag AC79NN_SDK_V1.2.1_2023-12-13),
+   which JieLi publishes under the Apache License, Version 2.0. The licence text
+   is LICENSES/Apache-2.0.txt (also at http://www.apache.org/licenses/LICENSE-2.0).
+   Changes are noted at the top of each file.
 
 3. GNU GPL version 3 (a build tool, not linked into the firmware)
 
    tools/fm1pkg_make.py is our fork of Felucca's packager, Copyright (C) 2026
    Leo Kuroshita (@kurogedelic), Hügelton Instruments, GPL-3.0-only
-   (https://github.com/hugelton/Felucca). It runs on the host at packaging time
-   only. The .fwsc package it produces also contains Felucca's update loader
-   (build/loader/ota.bin, GPL-3), a separate program the FM-1's SPL runs during
-   an install; its source is in the Felucca repository. Nothing under the GPL
-   is compiled or linked into the bridge firmware.
+   (https://github.com/hugelton/Felucca), modified 2026-10-11 as its header says.
+   It runs on the host at packaging time only. The licence text is
+   LICENSES/GPL-3.0-only.txt.
 
-4. Binary-only libraries (not in this tree, not ours to license)
+   The .fwsc package it produces also contains Felucca's update loader (ota.bin,
+   GPL-3.0-only), unmodified, built from firmware/loader/ of Felucca tag v1.6
+   (commit 1727537624390cc3f9c7dff2456b43b3a8edb005): a separate program the
+   FM-1's SPL runs during an install, never linked with the bridge. Its complete
+   corresponding source, the whole Felucca tree at that tag, is attached to every
+   release as felucca-v1.6-source.tar.gz next to the packages, and is at
+   https://github.com/hugelton/Felucca/tree/v1.6. Nothing under the GPL is
+   compiled or linked into the bridge firmware.
+
+4. Bitstream Vera Fonts licence (the panel fonts)
+
+   app/ui/font.h and app/ui/font_big.h are bitmaps of DejaVu Sans Mono glyphs
+   rendered by tools/mkfont.py: a modified copy of the Bitstream Vera font
+   software, Copyright (c) 2003 by Bitstream, Inc. All Rights Reserved.
+   Bitstream Vera is a trademark of Bitstream, Inc. DejaVu changes are in the
+   public domain. The notice is in each header and in LICENSES/Bitstream-Vera.txt.
+
+5. Binary-only libraries (not in this tree, not ours to license)
 
    The firmware links JieLi's Bluetooth, USB and kernel libraries, shipped
    without source as binary .a files in the AC79 SDK. JieLi publishes that SDK
@@ -64,7 +90,10 @@ for that file; this file is the map.
    https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK, tag
    AC79NN_SDK_V1.2.1_2023-12-13). They are not included here; a build needs
    the SDK checkout. A binary package of this firmware carries their code, and
-   is redistributed under those terms.
+   is redistributed under those terms. The third-party code known to be inside
+   them (micro-ecc, BSD 2-Clause; newlib; FreeRTOS; LLVM compiler-rt) and the
+   SDK's three boot files in every package are listed, with their notices, in
+   THIRD-PARTY-NOTICES.md.
 
 The FM-1 hardware, its stock firmware and the names M-VAVE and FM-1 belong to
 their owners. This project is not affiliated with M-VAVE.
