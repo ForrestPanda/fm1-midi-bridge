@@ -4,7 +4,7 @@ Walked on the first unit on 2026-10-19: what that unit showed is marked **verifi
 is what the stock mechanism, Felucca's installer, the SDK sources and jl-uboot-tool say.
 `tools/fm1_safe_install.sh` runs the pre-install steps and the install in order (below,
 "Before the first install"); `docs/install.md` is the short version. The unit records below
-also mention **BackBeat** ("the drummer", identity `FM-1_985` since 0.9, `FM-1_900` before): the author's other FM-1
+also mention **BackBeat** ("the drummer", identity `FM-1_988` since 0.9.1, `FM-1_985` in 0.9 (Loom FM-1 had it first), `FM-1_900` before): the author's other FM-1
 firmware, a SLOOP fork, which went onto the first unit before the bridge.
 
 ## Why the FM-1 is hard to brick
@@ -203,6 +203,24 @@ SHA-256 `850a8641…`, the same as its GitHub release asset) through the bridge'
 new identity answering right after. So the bridge takes the next update from another Felucca-loader
 firmware and hands it on to one, as it does to stock.
 
+### Switched off during an update, 2026-10-30
+
+BackBeat 0.9.1 (`FM-1_988`) over BackBeat 0.9 (`FM-1_985`) from the website's installer, and the
+unit switched off while the loader was writing. Afterwards: dark screen, nothing on USB through
+several power cycles (no MIDI device, no `ota-` loader, no UBOOT disk): step 3. The dongle's board
+first: its flash held another program (a TRS MIDI bridge build, saved aside), so the first rounds
+did nothing; `make flash` in `tools/dongle/stm32f4disco` put `fm1_key.elf` back (verified by a
+read-back over ST-Link), and the next round brought the UBOOT disk up (`4c4a:8057`, `/dev/sg0`
+already world-writable here). The head read from the chip (`0x0..0x4000`) matched the unit's dump
+of 2026-10-19 byte for byte, so the unit is the dumped one; then
+`tools/fm1_flash.sh restore-app fm1-dumps/fm1-stock-full-2026-10-19.bin` (the script's first run:
+write, read back, identical). Power cycle: stock V15 (`FM-1_015`), and
+`fm1_safe_install.sh backbeat-0.9.1.fwsc --no-dump` straight through to `FM-1_988`. Lessons: **check
+the dongle's board holds `fm1_key.elf` before the first round** (the board is shared with other
+projects); and the website's installer served the previous release for a few minutes after the
+release was pushed (GitHub Pages' deploy lag, plus the service worker's cache), which is how 0.9
+was on the unit at all.
+
 ## The ladder, cheapest first
 
 ### 1. The firmware runs and enumerates
@@ -233,8 +251,11 @@ resetting:
 Crash before USB, boot loop, dead screen. The dongle on D+/D- at power-up, then the app area
 of your dump back: `tools/fm1_flash.sh restore-app ../fm1-dumps/fm1-FM-1_015-full-DATE.bin` (the
 dump `fm1_safe_install.sh` took; head, VM and the unit's own data are not written). Power-cycle:
-stock answers, and the install starts over. **Verified** on the first unit (the same write, by hand
-in jl-uboot-tool's shell). `tools/fm1_flash.sh restore` writes the whole 1 MB and has never run:
+stock answers, and the install starts over. **Verified** on the first unit (2026-10-19 the same
+write, by hand in jl-uboot-tool's shell; 2026-10-30 the script itself, after a power-off during an
+update). Before the first round, make sure the board holds the key program:
+`make flash` in `tools/dongle/stm32f4disco` (2026-10-30 it held another project's build and the
+rounds did nothing until it was reflashed). `tools/fm1_flash.sh restore` writes the whole 1 MB and has never run:
 a last resort, and only ever with this unit's own dump (another unit's carries its Bluetooth and
 user data). Without a dump of your own there is no tested way back from here: take one first
 (step 2). Another unit's app area is encrypted with that unit's chip key, which may differ.
@@ -249,7 +270,7 @@ Open the case and program the SPI NOR with a clip. There are no debug pads.
 | USB shows | State |
 | --- | --- |
 | MIDI device "FM-1" (USB 4c4a:c755), identity `FM-1_015` | stock (verified) |
-| MIDI device "Felucca MIDI 1" + USB audio "Felucca", identity `FM-1_985` (`FM-1_900` before 0.9) | BackBeat, the author's drummer firmware (verified) |
+| MIDI device "Felucca MIDI 1" + USB audio "Felucca", identity `FM-1_988` (`FM-1_985` in 0.9, `FM-1_900` before) | BackBeat, the author's drummer firmware (verified) |
 | MIDI device "FM-1" (USB 3654:4155), identity `FM-1_931` / `FM-1_930` | this bridge / its minimal build (verified) |
 | MIDI device "Felucca Update" (USB 1209:0002), identity `ota-FM-1_900` | Felucca's update loader, which our packages carry, waiting for step 2: rerun the install |
 | MIDI device, identity `ota-FM-1_015` | stock's own update loader (M-UPGRADE's), waiting for step 2 (from the protocol notes; not seen on the unit) |
